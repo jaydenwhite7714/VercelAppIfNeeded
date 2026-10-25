@@ -17,6 +17,7 @@ import {
   deleteChangeOrder,
   updateChangeOrder,
   updateProject,
+  updateAsk,
   getSettings,
   validateWorkspace,
 } from '@/lib/db';
@@ -71,7 +72,13 @@ describe('workspace persistence', () => {
 
   it('rejects invalid project prices and request values before storing them', async () => {
     await expect(createProject({ name: 'Bad', clientName: 'Client', rate: Number.NaN, startDate: '2026-10-01', revisionRounds: 1, scope: [] })).rejects.toThrow(/positive number/i);
+    await expect(createProject({ name: 'Bad date', clientName: 'Client', rate: 100, startDate: '2026-02-30', revisionRounds: 1, scope: [] })).rejects.toThrow(/start date/i);
+    await expect(createProject({ name: 'Bad delivery', clientName: 'Client', rate: 100, startDate: '2026-10-01', dueDate: '2026-09-30', revisionRounds: 1, scope: [] })).rejects.toThrow(/before the project start/i);
+    await expect(createProject({ name: 'Bad email', clientName: 'Client', clientEmail: 'not-an-email', rate: 100, startDate: '2026-10-01', revisionRounds: 1, scope: [] })).rejects.toThrow(/client email/i);
+    await expect(saveSettings({ email: 'not-an-email' })).rejects.toThrow(/business email/i);
     const project = await createProject({ name: 'Valid', clientName: 'Client', rate: 100, startDate: '2026-10-01', revisionRounds: 1, scope: [] });
+    await expect(updateProject(project.id, { rate: 0 })).rejects.toThrow(/positive number/i);
+    await expect(updateProject(project.id, { clientEmail: 'bad' })).rejects.toThrow(/client email/i);
     await expect(saveAsk({ projectId: project.id, title: 'Bad value', sourceText: 'Add work', verdict: 'extra', confidence: 0.8, reasons: [], hours: 2, value: Number.NaN, rush: false })).rejects.toThrow(/valid non-negative/i);
     expect(await getDb()!.asks.count()).toBe(0);
   });
@@ -90,6 +97,12 @@ describe('workspace persistence', () => {
     await saveSettings({ name: 'Keep me', hourlyRate: 95 });
     await expect(saveSettings({ hourlyRate: Number.NaN })).rejects.toThrow(/positive number/i);
     expect((await getSettings())?.hourlyRate).toBe(95);
+  });
+
+  it('prevents changing currency after records exist so saved numbers are not silently relabeled', async () => {
+    await createProject({ name: 'Currency guard', clientName: 'Client', rate: 100, startDate: '2026-10-01', revisionRounds: 1, scope: [] });
+    await expect(saveSettings({ currency: 'EUR' })).rejects.toThrow(/relabel|not converted/i);
+    expect((await getSettings())?.currency).toBe('USD');
   });
 
   it('preserves independent profile edits made concurrently', async () => {
@@ -267,6 +280,12 @@ describe('workspace persistence', () => {
     const project = await createProject({ name: 'Report math', clientName: 'Client', rate: 95, startDate: '2026-10-01', revisionRounds: 1, scope: [] });
     const absorbed = await saveAsk({ projectId: project.id, title: 'Small included tweak', sourceText: 'Move the logo', verdict: 'covered', confidence: 0.9, reasons: [], hours: 1, value: 120, rush: false });
     await decideAsk(absorbed.id, 'absorb', settings);
+    const previousMonthAsk = await saveAsk({ projectId: project.id, title: 'Last month’s extra', sourceText: 'Add a footer', verdict: 'covered', confidence: 0.9, reasons: [], hours: 2, value: 220, rush: false });
+    await decideAsk(previousMonthAsk.id, 'absorb', settings);
+    const previousMonth = new Date();
+    previousMonth.setDate(1);
+    previousMonth.setMonth(previousMonth.getMonth() - 1);
+    await updateAsk(previousMonthAsk.id, { decidedAt: previousMonth.getTime() });
 
     const approvedAsk = await saveAsk({ projectId: project.id, title: 'New page', sourceText: 'Add a new page', verdict: 'extra', confidence: 0.9, reasons: [], hours: 3, value: 285, rush: false });
     const approvedOrder = (await decideAsk(approvedAsk.id, 'bill', settings)).changeOrder!;
@@ -278,11 +297,13 @@ describe('workspace persistence', () => {
 
     const db = getDb()!;
     const metrics = computeMetrics([project], await db.asks.toArray(), await db.changeOrders.toArray());
-    expect(metrics.absorbedAllTime).toBe(120);
+    expect(metrics.absorbedAllTime).toBe(340);
+    expect(metrics.absorbedThisMonth).toBe(120);
+    expect(metrics.absorbedHours).toBe(1);
     expect(metrics.billedAllTime).toBe(285);
     expect(metrics.pendingValue).toBe(90);
     expect(metrics.openCount).toBe(1);
-    expect(metrics.byProject[0]).toMatchObject({ absorbed: 120, billed: 285, open: 1 });
+    expect(metrics.byProject[0]).toMatchObject({ absorbed: 340, billed: 285, open: 1 });
   });
 
   it('adds the sample workspace without replacing existing user records and avoids duplicating it', async () => {

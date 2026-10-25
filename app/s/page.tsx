@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, ArrowRight, Check, Mail, ShieldCheck, X } from 'lucide-react';
 import { decodeSharedScope, type SharedScope } from '@/lib/codec';
-import { Button, Card, CopyButton, Skeleton } from '@/components/ui';
+import { Button, Card, copyText, CopyButton, Skeleton, useToast } from '@/components/ui';
 import { Wordmark } from '@/components/brand';
 import { formatDate } from '@/lib/format';
 
@@ -13,6 +13,7 @@ type State = { status: 'loading' } | { status: 'empty' } | { status: 'corrupted'
 export default function SharedScopePage() {
   const [state, setState] = useState<State>({ status: 'loading' });
   const [copied, setCopied] = useState(false);
+  const { push } = useToast();
 
   useEffect(() => {
     const hash = window.location.hash.replace(/^#/, '');
@@ -155,11 +156,15 @@ export default function SharedScopePage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(`${scope!.projectName} — agreed scope, prepared by ${scope!.fromBusiness || scope!.fromName}`);
+                onClick={async () => {
+                  const ok = await copyText(`${scope!.projectName} — agreed scope, prepared by ${scope!.fromBusiness || scope!.fromName}`);
+                  if (ok) {
                     setCopied(true);
                     window.setTimeout(() => setCopied(false), 1800);
-                  }}
+                  } else {
+                    push('Could not access the clipboard — select the text and copy manually.', 'error');
+                  }
+                }}
                 >
                   {copied ? 'Copied' : 'Copy summary'}
                 </Button>

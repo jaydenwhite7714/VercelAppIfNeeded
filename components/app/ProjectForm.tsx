@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2, Wand2 } from 'lucide-react';
-import type { Project, ScopeItem, ScopeKind } from '@/lib/types';
+import { CURRENCIES, type Currency, type Project, type ScopeItem, type ScopeKind } from '@/lib/types';
 import { createProject, uid, updateProject } from '@/lib/db';
 import { SCOPE_TEMPLATES, type ScopeTemplateItem } from '@/lib/templates';
 import { Button, Field, Input, Modal, Select, Textarea, useToast } from '@/components/ui';
@@ -33,11 +33,13 @@ export function ProjectForm({
   onClose,
   project,
   onSaved,
+  currency = 'USD',
 }: {
   open: boolean;
   onClose: () => void;
   project?: Project;
   onSaved?: (project: Project) => void;
+  currency?: Currency;
 }) {
   const { push } = useToast();
   const [name, setName] = useState('');
@@ -205,7 +207,7 @@ export function ProjectForm({
           </Field>
           <Field label="Project fee" optional hint="Used for the effective-rate number in reports.">
             <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-mute">$</span>
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-mute">{CURRENCIES.find((option) => option.code === currency)?.symbol ?? currency}</span>
               <Input
                 type="number"
                 min={0}
@@ -218,7 +220,7 @@ export function ProjectForm({
           </Field>
           <Field label="Your rate" hint="Per hour. Used to price every request.">
             <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-mute">$</span>
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-mute">{CURRENCIES.find((option) => option.code === currency)?.symbol ?? currency}</span>
               <Input
                 type="number"
                 min={1}

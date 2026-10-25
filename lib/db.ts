@@ -73,8 +73,19 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
   if (patch.rushMultiplier !== undefined && (!Number.isFinite(patch.rushMultiplier) || patch.rushMultiplier < 1)) throw new Error('Rush multiplier must be at least 1.');
   if (patch.currency !== undefined && !CURRENCIES.some((option) => option.code === patch.currency)) throw new Error('Choose a supported currency.');
   if (patch.tone !== undefined && !['warm', 'firm', 'formal'].includes(patch.tone)) throw new Error('Choose a supported reply tone.');
-  return db.transaction('rw', db.settings, async () => {
+  if (patch.email !== undefined && !validOptionalEmail(patch.email)) throw new Error('Enter a valid business email, or leave it blank.');
+  return db.transaction('rw', db.settings, db.projects, db.asks, db.changeOrders, async () => {
     const existing = (await db.settings.get('settings')) ?? emptySettings();
+    if (patch.currency !== undefined && patch.currency !== existing.currency) {
+      const [projectCount, askCount, orderCount] = await Promise.all([
+        db.projects.count(),
+        db.asks.count(),
+        db.changeOrders.count(),
+      ]);
+      if (projectCount + askCount + orderCount > 0) {
+        throw new Error('Currency cannot be changed after you have logged project data. Unbilled does not convert amounts, so changing it would relabel your existing values.');
+      }
+    }
     const next: Settings = { ...existing, ...patch, id: 'settings', updatedAt: Date.now() };
     await db.settings.put(next);
     return next;
@@ -83,7 +94,7 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
 
 export async function logActivity(entry: Omit<Activity, 'id' | 'at'> & { at?: number }): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   await db.activity.put({ id: uid(), at: entry.at ?? Date.now(), ...entry });
 }
 
@@ -102,11 +113,25 @@ export interface NewProjectInput {
   notes?: string;
 }
 
+function validDateOnly(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function validOptionalEmail(value: string | undefined): boolean {
+  return !value?.trim() || /^[^\s@]+@[^\s@]+$/.test(value.trim());
+}
+
 export async function createProject(input: NewProjectInput): Promise<Project> {
   const db = getDb();
   if (!db) throw new Error('Storage unavailable');
   if (!input.name.trim() || !input.clientName.trim()) throw new Error('A project needs a name and a client.');
+  if (!validOptionalEmail(input.clientEmail)) throw new Error('Enter a valid client email, or leave it blank.');
   if (!Number.isFinite(input.rate) || input.rate <= 0) throw new Error('Project rate must be a positive number.');
+  if (!validDateOnly(input.startDate)) throw new Error('Enter a valid project start date.');
+  if (input.dueDate !== undefined && !validDateOnly(input.dueDate)) throw new Error('Enter a valid delivery date.');
+  if (input.dueDate && input.dueDate < input.startDate) throw new Error('Delivery date cannot be before the project start date.');
   if (input.budget !== undefined && (!Number.isFinite(input.budget) || input.budget < 0)) throw new Error('Project budget must be a valid non-negative number.');
   if (!Number.isInteger(input.revisionRounds) || input.revisionRounds < 0) throw new Error('Revision rounds must be a non-negative whole number.');
   const hasInvalidScopeItem = input.scope.some((item) => {
@@ -123,20 +148,48 @@ export async function createProject(input: NewProjectInput): Promise<Project> {
     updatedAt: now,
     ...input,
   };
-  await db.projects.put(project);
-  await logActivity({ type: 'project', message: `Project “${project.name}” created for ${project.clientName}.`, projectId: project.id });
+  await db.transaction('rw', db.projects, db.activity, async () => {
+    await db.projects.add(project);
+    await db.activity.add({
+      id: uid(), at: now, type: 'project',
+      message: `Project “${project.name}” created for ${project.clientName}.`, projectId: project.id,
+    });
+  });
   return project;
 }
 
 export async function updateProject(id: string, patch: Partial<Project>): Promise<void> {
   const db = getDb();
-  if (!db) return;
-  await db.projects.update(id, { ...patch, updatedAt: Date.now() });
+  if (!db) throw new Error('Storage unavailable');
+  const editable = ['name', 'clientName', 'clientEmail', 'rate', 'budget', 'startDate', 'dueDate', 'revisionRounds', 'scope', 'notes', 'status'] as const;
+  if (Object.keys(patch).some((key) => !editable.includes(key as (typeof editable)[number]))) throw new Error('This project field cannot be changed.');
+  if (patch.name !== undefined && !patch.name.trim()) throw new Error('A project needs a name.');
+  if (patch.clientName !== undefined && !patch.clientName.trim()) throw new Error('A project needs a client.');
+  if (patch.clientEmail !== undefined && !validOptionalEmail(patch.clientEmail)) throw new Error('Enter a valid client email, or leave it blank.');
+  if (patch.rate !== undefined && (!Number.isFinite(patch.rate) || patch.rate <= 0)) throw new Error('Project rate must be a positive number.');
+  if (patch.budget !== undefined && (!Number.isFinite(patch.budget) || patch.budget < 0)) throw new Error('Project budget must be a valid non-negative number.');
+  if (patch.revisionRounds !== undefined && (!Number.isInteger(patch.revisionRounds) || patch.revisionRounds < 0)) throw new Error('Revision rounds must be a non-negative whole number.');
+  if (patch.status !== undefined && !['active', 'paused', 'complete'].includes(patch.status)) throw new Error('Choose a supported project status.');
+  if (patch.startDate !== undefined && !validDateOnly(patch.startDate)) throw new Error('Enter a valid project start date.');
+  if (patch.dueDate !== undefined && !validDateOnly(patch.dueDate)) throw new Error('Enter a valid delivery date.');
+  if (patch.scope?.some((item) => !item.label.trim()
+    || (item.hours !== undefined && (!Number.isFinite(item.hours) || item.hours < 0))
+    || (item.qty !== undefined && (!Number.isFinite(item.qty) || item.qty <= 0)))) {
+    throw new Error('Scope items need a label and valid quantity and hour values.');
+  }
+  await db.transaction('rw', db.projects, async () => {
+    const existing = await db.projects.get(id);
+    if (!existing) throw new Error('Project not found.');
+    const nextStartDate = patch.startDate ?? existing.startDate;
+    const nextDueDate = Object.prototype.hasOwnProperty.call(patch, 'dueDate') ? patch.dueDate : existing.dueDate;
+    if (nextDueDate && nextDueDate < nextStartDate) throw new Error('Delivery date cannot be before the project start date.');
+    await db.projects.update(id, { ...patch, updatedAt: Date.now() });
+  });
 }
 
 export async function deleteProject(id: string): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   await db.transaction('rw', db.projects, db.asks, db.changeOrders, db.activity, async () => {
     await db.asks.where('projectId').equals(id).delete();
     await db.changeOrders.where('projectId').equals(id).delete();
@@ -190,13 +243,13 @@ export async function saveAsk(input: NewAskInput): Promise<Ask> {
 
 export async function updateAsk(id: string, patch: Partial<Ask>): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   await db.asks.update(id, patch);
 }
 
 export async function deleteAsk(id: string): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   await db.asks.delete(id);
 }
 
@@ -280,7 +333,7 @@ export async function decideAsk(
 
 export async function markChangeOrderSent(id: string): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   await db.transaction('rw', db.changeOrders, db.activity, async () => {
     const order = await db.changeOrders.get(id);
     if (!order || order.status !== 'draft') return;
@@ -292,7 +345,7 @@ export async function markChangeOrderSent(id: string): Promise<void> {
 
 export async function markChangeOrderApproved(id: string, approvedBy: string, approvalId?: string, approvedAt?: number): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   await db.transaction('rw', db.changeOrders, db.activity, async () => {
     const order = await db.changeOrders.get(id);
     if (!order || order.status === 'approved') return;
@@ -310,7 +363,7 @@ export async function markChangeOrderApproved(id: string, approvedBy: string, ap
 
 export async function markChangeOrderDeclined(id: string): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   await db.transaction('rw', db.changeOrders, db.asks, db.activity, async () => {
     const order = await db.changeOrders.get(id);
     if (!order || order.status === 'approved' || order.status === 'declined') return;
@@ -323,7 +376,7 @@ export async function markChangeOrderDeclined(id: string): Promise<void> {
 
 export async function updateChangeOrder(id: string, patch: Partial<ChangeOrder>): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
 
   const editableFields = ['title', 'summary', 'timelineImpact', 'validUntil', 'items', 'total'] as const;
   if (Object.keys(patch).some((key) => !editableFields.includes(key as (typeof editableFields)[number]))) {
@@ -367,7 +420,7 @@ export async function updateChangeOrder(id: string, patch: Partial<ChangeOrder>)
 
 export async function deleteChangeOrder(id: string): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   await db.transaction('rw', db.changeOrders, db.asks, async () => {
     const order = await db.changeOrders.get(id);
     if (!order) return;
@@ -381,7 +434,7 @@ export async function deleteChangeOrder(id: string): Promise<void> {
 
 export async function seedDemoWorkspace(): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   const existingSettings = await db.settings.get('settings');
   const alreadySeeded = (await db.projects.toArray()).some((project) => project.name === 'Halcyon Coffee — brand & site');
   if (alreadySeeded) return;
@@ -564,7 +617,7 @@ export async function importWorkspace(data: WorkspaceExport): Promise<void> {
 
 export async function resetWorkspace(): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   await db.transaction('rw', db.settings, db.projects, db.asks, db.changeOrders, db.activity, async () => {
     await Promise.all([db.settings.clear(), db.projects.clear(), db.asks.clear(), db.changeOrders.clear(), db.activity.clear()]);
   });

@@ -17,7 +17,7 @@ import { PageHeader } from '@/components/app/AppShell';
 import { AskCard } from '@/components/app/AskCard';
 import { DecisionPanel } from '@/components/app/DecisionPanel';
 import { ProjectForm } from '@/components/app/ProjectForm';
-import { Button, Card, SectionLabel, Skeleton } from '@/components/ui';
+import { Button, Card, SectionLabel, Skeleton, useToast } from '@/components/ui';
 import { useActivity, useAsks, useChangeOrders, useProjects, useReadySettings, computeMetrics } from '@/lib/hooks';
 import { seedDemoWorkspace } from '@/lib/db';
 import { hoursLabel, money, relativeTime } from '@/lib/format';
@@ -81,6 +81,7 @@ function Stat({
 
 export default function LedgerPage() {
   const { settings } = useReadySettings();
+  const { push } = useToast();
   const projects = useProjects();
   const asks = useAsks();
   const orders = useChangeOrders();
@@ -110,7 +111,7 @@ export default function LedgerPage() {
         title={`${greeting()}, ${settings.name.split(' ')[0] || 'there'}.`}
         description={
           activeProjects.length
-            ? 'Here is what the goodwill cost, what it earned, and what is still waiting on a decision.'
+            ? 'Estimated value of absorbed requests, approved change orders, and what is still waiting for a decision.'
             : 'Start with one project and one client message. The ledger does the rest.'
         }
         actions={
@@ -154,8 +155,14 @@ export default function LedgerPage() {
                   loading={seeding}
                   onClick={async () => {
                     setSeeding(true);
-                    await seedDemoWorkspace();
-                    setSeeding(false);
+                    try {
+                      await seedDemoWorkspace();
+                      push('Sample ledger is ready, or it was already present.');
+                    } catch (error) {
+                      push(error instanceof Error ? error.message : 'Could not load the sample ledger.', 'error');
+                    } finally {
+                      setSeeding(false);
+                    }
                   }}
                 >
                   <Sparkles className="h-3.5 w-3.5" /> Load a sample ledger
@@ -189,9 +196,9 @@ export default function LedgerPage() {
         <div className="space-y-6">
           <div className="grid gap-3 sm:grid-cols-3">
             <Stat
-              label="Absorbed this month"
+              label="Estimated absorbed value · month"
               value={money(metrics.absorbedThisMonth, settings.currency)}
-              sub={`${hoursLabel(metrics.absorbedHours)} estimated across ${(asks ?? []).filter((a) => a.status === 'absorbed').length} absorbed requests${
+              sub={`Est. ${hoursLabel(metrics.absorbedHours)} across ${metrics.absorbedCountThisMonth} absorbed requests${
                 delta !== null ? ` · ${delta > 0 ? '+' : ''}${delta}% vs last month` : ''
               }`}
               tone="accent"
@@ -210,7 +217,7 @@ export default function LedgerPage() {
               href="/app/change-orders"
             />
             <Stat
-              label="Waiting on you"
+              label="Estimated value waiting"
               value={money(metrics.pendingValue, settings.currency)}
               sub={`${openAsks.length} request${openAsks.length === 1 ? '' : 's'} with no decision logged`}
               icon={<Inbox className="h-4 w-4 text-ink-mute" />}
@@ -292,7 +299,7 @@ export default function LedgerPage() {
                 </div>
                 <div className="mt-2 flex items-center justify-between text-[11px]">
                   <span className="text-accent-deep">
-                    {absorbedShare}% absorbed · {money(metrics.absorbedAllTime, settings.currency, { compact: true })}
+                    {absorbedShare}% estimated absorbed · {money(metrics.absorbedAllTime, settings.currency, { compact: true })}
                   </span>
                   <span className="text-sage">
                     {money(metrics.billedAllTime, settings.currency, { compact: true })} approved
@@ -302,10 +309,10 @@ export default function LedgerPage() {
                   <p className="mono-label">This month</p>
                   <p className="mt-1 text-[12px] leading-relaxed text-ink-soft">
                     {metrics.absorbedThisMonth === 0
-                      ? 'Nothing absorbed yet. Keep it that way.'
-                      : `You absorbed ${money(metrics.absorbedThisMonth, settings.currency)} — an estimated ${hoursLabel(
+                      ? 'No absorbed requests logged this month.'
+                      : `You logged an estimated ${money(metrics.absorbedThisMonth, settings.currency)} in absorbed requests — about ${hoursLabel(
                           metrics.absorbedHours,
-                        )} that did not appear on an invoice.`}
+                        )} of estimated labor.`}
                   </p>
                   <Link href="/app/reports" className="mt-2.5 inline-flex items-center gap-1 text-[11.5px] font-medium text-accent-deep link-underline">
                     Open the leak report <BarChart3 className="h-3 w-3" />
@@ -382,7 +389,7 @@ export default function LedgerPage() {
         </div>
       )}
 
-      <ProjectForm open={projectFormOpen} onClose={() => setProjectFormOpen(false)} />
+      <ProjectForm open={projectFormOpen} onClose={() => setProjectFormOpen(false)} currency={settings.currency} />
       {decision ? (
         <DecisionPanel
           ask={decision.ask}

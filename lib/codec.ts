@@ -113,19 +113,28 @@ export function shareUrl(encoded: string, origin?: string): string {
   return `${base}/c#${encoded}`;
 }
 
-export function approvalReceipt(order: SharedChangeOrder, approvedBy: string, timestamp: number): string {
+export function approvalReceipt(order: SharedChangeOrder, approvedBy: string, timestamp: number, note = ''): string {
   const when = new Date(timestamp).toUTCString();
+  const safeName = approvedBy.replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
+  const safeNote = note
+    .replace(/\r/g, '')
+    .slice(0, 2_000)
+    .split('\n')
+    .map((line) => `> ${line}`)
+    .join('\n');
   return [
     `CHANGE ORDER APPROVAL`,
     `Change order: ${order.number} — ${order.title}`,
     `Project: ${order.projectName}`,
     `Client: ${order.clientName}`,
     `Total approved: ${order.currency} ${order.total.toLocaleString('en-US')}`,
-    `Approved by: ${approvedBy}`,
+    `Approved by: ${safeName}`,
     `Approved at: ${when}`,
     `Document checksum: ${order.checksum}`,
+    ...(safeNote ? [`Client note:`, safeNote] : []),
     ``,
     `I approve the scope, fee, and timeline changes described in this change order.`,
+    `This text receipt is not a cryptographic signature and does not independently verify identity.`,
   ].join('\n');
 }
 

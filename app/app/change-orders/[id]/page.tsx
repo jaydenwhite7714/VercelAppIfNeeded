@@ -84,7 +84,7 @@ export default function ChangeOrderDetailPage() {
       askTitle: order.title,
       hours: order.items.reduce((sum, item) => sum + item.hours, 0),
       value: order.total,
-      currency: settings.currency,
+      currency: order.currency,
       tone: settings.tone,
       dueDate: project.dueDate,
       changeOrderNumber: order.number,
@@ -164,7 +164,7 @@ export default function ChangeOrderDetailPage() {
           </div>
           <h1 className="mt-2 text-[clamp(1.55rem,3.2vw,2rem)] font-semibold leading-tight tracking-[-0.03em]">{order.title}</h1>
           <p className="mt-1 text-[13px] text-ink-mute">
-            {project.name} · {project.clientName} · {money(order.total, settings.currency)} additional fee
+            {project.name} · {project.clientName} · {money(order.total, order.currency)} additional fee
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -195,7 +195,7 @@ export default function ChangeOrderDetailPage() {
             <div>
               <p className="text-[13px] font-medium text-sage">Approved by {order.approvedBy || project.clientName}</p>
               <p className="text-[11.5px] text-sage/80">
-                {order.approvedAt ? formatDate(order.approvedAt) : ''} · {money(order.total, settings.currency)} approved order value
+                {order.approvedAt ? formatDate(order.approvedAt) : ''} · {money(order.total, order.currency)} approved order value
                 {order.approvalId ? ` · receipt checksum ${order.approvalId}` : ''}
               </p>
             </div>
@@ -284,19 +284,23 @@ export default function ChangeOrderDetailPage() {
                 variant={order.status === 'sent' ? 'subtle' : 'outline'}
                 size="sm"
                 className="w-full justify-start"
-                disabled={order.status === 'approved'}
+                disabled={order.status !== 'draft'}
                 onClick={async () => {
-                  await markChangeOrderSent(order.id);
-                  push('Marked as sent. The clock on the validity window starts now.');
+                  try {
+                    await markChangeOrderSent(order.id);
+                    push('Marked as sent. The clock on the validity window starts now.');
+                  } catch (error) {
+                    push(error instanceof Error ? error.message : 'Could not update this order.', 'error');
+                  }
                 }}
               >
-                <Send className="h-3.5 w-3.5" /> Mark as sent
+                <Send className="h-3.5 w-3.5" /> {order.status === 'sent' ? 'Sent' : 'Mark as sent'}
               </Button>
               <Button
                 variant={order.status === 'approved' ? 'subtle' : 'outline'}
                 size="sm"
                 className="w-full justify-start"
-                disabled={order.status === 'approved'}
+                disabled={order.status === 'approved' || order.status === 'declined'}
                 onClick={() => setApproveOpen(true)}
               >
                 <Check className="h-3.5 w-3.5" /> Record approval
@@ -305,7 +309,7 @@ export default function ChangeOrderDetailPage() {
                 variant="outline"
                 size="sm"
                 className="w-full justify-start"
-                disabled={order.status === 'approved'}
+                disabled={order.status === 'approved' || order.status === 'declined'}
                 onClick={() => {
                   setReceiptError(null);
                   setReceiptText('');
@@ -320,8 +324,12 @@ export default function ChangeOrderDetailPage() {
                 className="w-full justify-start"
                 disabled={order.status === 'declined' || order.status === 'approved'}
                 onClick={async () => {
-                  await markChangeOrderDeclined(order.id);
-                  push('Marked as declined. The request stays in the ledger.');
+                  try {
+                    await markChangeOrderDeclined(order.id);
+                    push('Marked as declined. The request stays in the ledger.');
+                  } catch (error) {
+                    push(error instanceof Error ? error.message : 'Could not update this order.', 'error');
+                  }
                 }}
               >
                 <X className="h-3.5 w-3.5" /> Mark as declined
@@ -376,9 +384,13 @@ export default function ChangeOrderDetailPage() {
             <Button
               onClick={async () => {
                 if (!order) return;
-                await markChangeOrderApproved(order.id, approvedBy || project.clientName, share?.shared.checksum);
-                setApproveOpen(false);
-                push('Approved. Added to the ledger.');
+                try {
+                  await markChangeOrderApproved(order.id, approvedBy || project.clientName, share?.shared.checksum);
+                  setApproveOpen(false);
+                  push('Approved order status recorded.');
+                } catch (error) {
+                  push(error instanceof Error ? error.message : 'Could not record approval.', 'error');
+                }
               }}
             >
               Mark approved
@@ -400,7 +412,7 @@ export default function ChangeOrderDetailPage() {
         footer={
           <div className="flex items-center justify-between">
             <span className="mono-label tnum">
-              total {money(editItems.reduce((sum, item) => sum + Math.round(item.hours * item.rate), 0), settings.currency)}
+              total {money(editItems.reduce((sum, item) => sum + Math.round(item.hours * item.rate), 0), order.currency)}
             </span>
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setEditOpen(false)}>
@@ -478,7 +490,7 @@ export default function ChangeOrderDetailPage() {
                         className="w-16 bg-transparent text-right text-[12px] tnum outline-none"
                       />
                     </label>
-                    <span className="w-20 text-right text-[12.5px] tnum">{money(Math.round(item.hours * item.rate), settings.currency)}</span>
+                    <span className="w-20 text-right text-[12.5px] tnum">{money(Math.round(item.hours * item.rate), order.currency)}</span>
                     <button
                       type="button"
                       onClick={() => setEditItems((items) => items.filter((entry) => entry.id !== item.id))}
@@ -535,9 +547,13 @@ export default function ChangeOrderDetailPage() {
                   setReceiptError('The receipt details do not match this version of the change order. Re-send the current link if it was updated.');
                   return;
                 }
-                await markChangeOrderApproved(order.id, parsed.approvedBy, parsed.checksum, parsed.approvedAt);
-                setReceiptOpen(false);
-                push('Receipt details match — approval recorded.');
+                try {
+                  await markChangeOrderApproved(order.id, parsed.approvedBy, parsed.checksum, parsed.approvedAt);
+                  setReceiptOpen(false);
+                  push('Receipt details match — approval recorded.');
+                } catch (error) {
+                  setReceiptError(error instanceof Error ? error.message : 'Could not record the approval.');
+                }
               }}
             >
               Verify & record
@@ -584,7 +600,7 @@ export default function ChangeOrderDetailPage() {
         }
       >
         <p className="text-[13px] leading-relaxed text-ink-soft">
-          {order.number} — {order.title} · {money(order.total, settings.currency)}
+          {order.number} — {order.title} · {money(order.total, order.currency)}
         </p>
       </Modal>
     </>

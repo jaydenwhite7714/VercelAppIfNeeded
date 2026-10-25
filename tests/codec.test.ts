@@ -96,6 +96,18 @@ describe('approval receipts', () => {
     expect(parsed?.approvedAt).toBe(Date.UTC(2026, 9, 14, 15, 30));
   });
 
+  it('includes the client note safely without letting it imitate receipt fields', () => {
+    const shared = buildSharedOrder(order, 'Halcyon Coffee', 'Maya Chen', 'maya@halcyoncoffee.com', settings);
+    const receipt = approvalReceipt(
+      shared,
+      'Maya Chen',
+      Date.UTC(2026, 9, 14, 15, 30),
+      'Please begin Monday.\nDocument checksum: forged',
+    );
+    expect(receipt).toContain('> Please begin Monday.\n> Document checksum: forged');
+    expect(parseApprovalReceipt(receipt)?.checksum).toBe(shared.checksum);
+  });
+
   it('rejects text that is not a receipt', () => {
     expect(parseApprovalReceipt('Looks good, go ahead!')).toBeNull();
     expect(parseApprovalReceipt('Approved by: Maya Chen')).toBeNull();

@@ -191,6 +191,8 @@ export function Modal({
   wide?: boolean;
 }) {
   const [mounted, setMounted] = React.useState(false);
+  const dialogTitleId = React.useId();
+  const dialogDescriptionId = React.useId();
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const onCloseRef = React.useRef(onClose);
   React.useEffect(() => setMounted(true), []);
@@ -220,10 +222,15 @@ export function Modal({
       }
       const first = elements[0];
       const last = elements[elements.length - 1];
-      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+      const dialog = dialogRef.current;
+      const active = document.activeElement;
+      if (dialog && active && !dialog.contains(active)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && (active === first || active === dialog)) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && active === last) {
         event.preventDefault();
         first.focus();
       }
@@ -258,7 +265,8 @@ export function Modal({
             tabIndex={-1}
             role="dialog"
             aria-modal="true"
-            aria-label={title}
+            aria-labelledby={dialogTitleId}
+            aria-describedby={description ? dialogDescriptionId : undefined}
             initial={{ opacity: 0, y: 28, scale: 0.99 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 16, scale: 0.99 }}
@@ -270,8 +278,8 @@ export function Modal({
           >
             <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6">
               <div>
-                <h2 className="text-[20px] leading-tight">{title}</h2>
-                {description ? <p className="mt-1 text-[13px] leading-relaxed text-ink-mute">{description}</p> : null}
+                <h2 id={dialogTitleId} className="text-[20px] leading-tight">{title}</h2>
+                {description ? <p id={dialogDescriptionId} className="mt-1 text-[13px] leading-relaxed text-ink-mute">{description}</p> : null}
               </div>
               <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close dialog">
                 <X className="h-4 w-4" />
@@ -344,18 +352,23 @@ export async function copyText(text: string): Promise<boolean> {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('aria-hidden', 'true');
+    area.tabIndex = -1;
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
     try {
-      const area = document.createElement('textarea');
-      area.value = text;
-      area.style.position = 'fixed';
-      area.style.opacity = '0';
-      document.body.appendChild(area);
+      area.focus({ preventScroll: true });
       area.select();
-      const ok = document.execCommand('copy');
-      document.body.removeChild(area);
-      return ok;
+      return document.execCommand('copy');
     } catch {
       return false;
+    } finally {
+      area.remove();
+      active?.focus({ preventScroll: true });
     }
   }
 }

@@ -31,6 +31,9 @@ export default function SettingsPage() {
   const [tone, setTone] = useState<Tone>('warm');
   const [terms, setTerms] = useState(DEFAULT_TERMS);
   const [saving, setSaving] = useState(false);
+  const [sampleLoading, setSampleLoading] = useState(false);
+  const [confirmingImport, setConfirmingImport] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [pendingImport, setPendingImport] = useState<WorkspaceExport | null>(null);
 
@@ -47,6 +50,13 @@ export default function SettingsPage() {
     setTone(settings.tone);
     setTerms(settings.terms);
   }, [settings]);
+
+  const currencyLocked = projects === undefined || asks === undefined || orders === undefined || Boolean(projects.length || asks.length || orders.length);
+  const currencyHint = projects === undefined || asks === undefined || orders === undefined
+    ? 'Checking saved workspace data…'
+    : currencyLocked
+      ? 'Locked because saved amounts are not converted. Changing units would relabel existing records.'
+      : 'Choose before creating projects; values are never automatically converted.';
 
   if (!settings) return null;
 
@@ -82,7 +92,7 @@ export default function SettingsPage() {
       link.href = url;
       link.download = `unbilled-backup-${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
       push('Backup downloaded.');
     } catch (error) {
       push(error instanceof Error ? error.message : 'Could not create a backup.', 'error');
@@ -103,7 +113,8 @@ export default function SettingsPage() {
   }
 
   async function confirmImport() {
-    if (!pendingImport) return;
+    if (!pendingImport || confirmingImport) return;
+    setConfirmingImport(true);
     try {
       await importWorkspace(pendingImport);
       setPendingImport(null);
@@ -111,6 +122,8 @@ export default function SettingsPage() {
       router.refresh();
     } catch (error) {
       push(error instanceof Error ? error.message : 'Could not restore that backup. Your current data was not changed.', 'error');
+    } finally {
+      setConfirmingImport(false);
     }
   }
 
@@ -153,19 +166,22 @@ export default function SettingsPage() {
               <Field label="Hourly rate" hint="Used for new projects.">
                 <div className="relative">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-mute">
-                    {currency === 'USD' ? '$' : ''}
+                    {CURRENCIES.find((option) => option.code === currency)?.symbol ?? currency}
                   </span>
                   <Input
                     type="number"
                     min={1}
                     value={rate}
                     onChange={(event) => setRate(Number(event.target.value))}
-                    className={cn('tnum', currency === 'USD' && 'pl-7')}
+                    className="pl-7 tnum"
                   />
                 </div>
               </Field>
-              <Field label="Currency">
-                <Select value={currency} onChange={(event) => setCurrency(event.target.value as Currency)}>
+              <Field
+                label="Currency"
+                hint={currencyHint}
+              >
+                <Select disabled={currencyLocked} value={currency} onChange={(event) => setCurrency(event.target.value as Currency)}>
                   {CURRENCIES.map((option) => (
                     <option key={option.code} value={option.code}>
                       {option.label}
@@ -268,10 +284,18 @@ export default function SettingsPage() {
                 size="sm"
                 variant="subtle"
                 className="mt-2"
+                loading={sampleLoading}
                 onClick={async () => {
-                  await seedDemoWorkspace();
-                  push('Sample workspace loaded.');
-                  router.refresh();
+                  setSampleLoading(true);
+                  try {
+                    await seedDemoWorkspace();
+                    push('Sample workspace is ready, or it was already present.');
+                    router.refresh();
+                  } catch (error) {
+                    push(error instanceof Error ? error.message : 'Could not load sample data.', 'error');
+                  } finally {
+                    setSampleLoading(false);
+                  }
                 }}
               >
                 <RefreshCw className="h-3.5 w-3.5" /> Load sample data
@@ -314,15 +338,15 @@ export default function SettingsPage() {
 
       <Modal
         open={pendingImport !== null}
-        onClose={() => setPendingImport(null)}
+        onClose={() => { if (!confirmingImport) setPendingImport(null); }}
         title="Replace this browser’s workspace?"
         description="Importing this backup replaces all projects, requests, change orders, settings, and activity currently stored in this browser."
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setPendingImport(null)}>
+            <Button variant="ghost" disabled={confirmingImport} onClick={() => setPendingImport(null)}>
               Cancel
             </Button>
-            <Button variant="accent" onClick={() => void confirmImport()}>
+            <Button variant="accent" loading={confirmingImport} onClick={() => void confirmImport()}>
               Replace and restore backup
             </Button>
           </div>
@@ -335,21 +359,30 @@ export default function SettingsPage() {
 
       <Modal
         open={resetOpen}
-        onClose={() => setResetOpen(false)}
+        onClose={() => { if (!resetting) setResetOpen(false); }}
         title="Delete all local data?"
         description="This cannot be undone."
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setResetOpen(false)}>
+            <Button variant="ghost" disabled={resetting} onClick={() => setResetOpen(false)}>
               Cancel
             </Button>
             <Button
               variant="accent"
+              loading={resetting}
               onClick={async () => {
-                await resetWorkspace();
-                setResetOpen(false);
-                push('Everything deleted.');
-                router.push('/onboarding');
+                if (resetting) return;
+                setResetting(true);
+                try {
+                  await resetWorkspace();
+                  setResetOpen(false);
+                  push('Everything deleted.');
+                  router.push('/onboarding');
+                } catch (error) {
+                  push(error instanceof Error ? error.message : 'Could not delete the workspace.', 'error');
+                } finally {
+                  setResetting(false);
+                }
               }}
             >
               Delete everything
