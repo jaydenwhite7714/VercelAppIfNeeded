@@ -3,13 +3,14 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, CalendarDays, FileSignature, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, CalendarDays, FileSignature, Link2, Pencil, Plus, Share2, Trash2 } from 'lucide-react';
 import { AskCard } from '@/components/app/AskCard';
 import { DecisionPanel } from '@/components/app/DecisionPanel';
 import { ProjectForm } from '@/components/app/ProjectForm';
-import { Badge, Button, Card, EmptyState, Modal, SectionLabel, Skeleton, Tabs } from '@/components/ui';
+import { Badge, Button, Card, EmptyState, Field, Modal, SectionLabel, Skeleton, Tabs, Textarea, useToast } from '@/components/ui';
 import { deleteProject } from '@/lib/db';
 import { useAsks, useChangeOrders, useProject, useReadySettings } from '@/lib/hooks';
+import { buildSharedScope, encodeSharedScope, MAX_SHARE_LENGTH, shareUrl } from '@/lib/codec';
 import { formatDate, hoursLabel, money, relativeTime } from '@/lib/format';
 import type { Ask, Project, ScopeKind } from '@/lib/types';
 import type { Decision } from '@/lib/scripts';
@@ -34,6 +35,11 @@ export default function ProjectDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [decision, setDecision] = useState<{ ask: Ask; project: Project; decision?: Decision } | null>(null);
   const [tab, setTab] = useState<'requests' | 'orders'>('requests');
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const [scopeLink, setScopeLink] = useState('');
+  const [scopeCopied, setScopeCopied] = useState(false);
+  const [scopeNote, setScopeNote] = useState('');
+  const { push } = useToast();
 
   const totals = useMemo(() => {
     const absorbed = (asks ?? []).filter((ask) => ask.status === 'absorbed').reduce((sum, ask) => sum + ask.value, 0);
@@ -90,6 +96,30 @@ export default function ProjectDetailPage() {
         <div className="flex shrink-0 gap-2">
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
             <Pencil className="h-3.5 w-3.5" /> Edit scope
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const shared = buildSharedScope({
+                settings,
+                projectName: project.name,
+                clientName: project.clientName,
+                dueDate: project.dueDate,
+                revisionRounds: project.revisionRounds,
+                rate: project.rate,
+                currency: settings.currency,
+                deliverables: project.scope.filter((item) => item.kind === 'deliverable').map((item) => ({ l: item.label, h: item.hours })),
+                included: project.scope.filter((item) => item.kind === 'included').map((item) => item.label),
+                excluded: project.scope.filter((item) => item.kind === 'excluded').map((item) => item.label),
+                note: scopeNote.trim() || undefined,
+              });
+              setScopeLink(shareUrl(encodeSharedScope(shared), typeof window !== 'undefined' ? window.location.origin : undefined));
+              setScopeCopied(false);
+              setScopeOpen(true);
+            }}
+          >
+            <Share2 className="h-3.5 w-3.5" /> Share scope
           </Button>
           <Link href="/app/requests">
             <Button size="sm">
@@ -257,6 +287,59 @@ export default function ProjectDetailPage() {
       </div>
 
       <ProjectForm open={editOpen} onClose={() => setEditOpen(false)} project={project} />
+
+      <Modal
+        open={scopeOpen}
+        onClose={() => setScopeOpen(false)}
+        title="Share the scope with your client"
+        description="A clean, read-only page of what is included and what is not. No account, no login, no server — the scope travels inside the link."
+        footer={
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="mono-label normal-case tracking-[0.03em]">{scopeLink.length > MAX_SHARE_LENGTH ? 'link is long — trim the scope' : 'safe to paste anywhere'}</p>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setScopeOpen(false)}>
+                Close
+              </Button>
+              <Button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(scopeLink);
+                    setScopeCopied(true);
+                    push('Scope link copied.');
+                  } catch {
+                    push('Could not copy — select the link manually.', 'error');
+                  }
+                }}
+              >
+                <Link2 className="h-3.5 w-3.5" /> {scopeCopied ? 'Copied' : 'Copy link'}
+              </Button>
+            </div>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="rounded-lg border border-line bg-paper/60 p-2.5">
+            <p className="break-all font-[var(--font-mono)] text-[10px] leading-relaxed text-ink-mute">{scopeLink}</p>
+          </div>
+          <Field label="Add a note for the client" optional hint="Shown at the bottom of the shared page.">
+            <Textarea
+              value={scopeNote}
+              onChange={(event) => setScopeNote(event.target.value)}
+              placeholder="Two rounds of revisions are included; after that I'll quote each round before starting."
+              className="min-h-16 text-[12.5px]"
+            />
+          </Field>
+          <p className="text-[11.5px] leading-relaxed text-ink-mute">
+            Change the note or the scope and close this dialog to regenerate the link. Clients can request a change from the
+            page, which opens an email to you — no new app to learn.
+          </p>
+          <a href={scopeLink} target="_blank" rel="noreferrer" className="inline-block">
+            <Button size="sm" variant="outline">
+              Preview the client view
+            </Button>
+          </a>
+        </div>
+      </Modal>
 
       <Modal
         open={deleteOpen}

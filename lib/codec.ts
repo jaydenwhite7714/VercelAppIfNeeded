@@ -154,3 +154,73 @@ export function parseApprovalReceipt(text: string): ParsedApproval | null {
     changeOrderNumber,
   };
 }
+
+/* ------------------------------------------------------------ shared scope */
+
+export interface SharedScope {
+  v: 1;
+  checksum: string;
+  fromName: string;
+  fromBusiness: string;
+  fromEmail: string;
+  clientName: string;
+  projectName: string;
+  issuedAt: string;
+  dueDate?: string;
+  revisionRounds: number;
+  rate?: number;
+  currency: Currency;
+  deliverables: { l: string; h?: number }[];
+  included: string[];
+  excluded: string[];
+  note?: string;
+}
+
+export function buildSharedScope(args: {
+  settings: Settings;
+  projectName: string;
+  clientName: string;
+  dueDate?: string;
+  revisionRounds: number;
+  rate: number;
+  currency: Currency;
+  deliverables: { l: string; h?: number }[];
+  included: string[];
+  excluded: string[];
+  note?: string;
+}): SharedScope {
+  const base: Omit<SharedScope, 'checksum'> = {
+    v: 1,
+    fromName: args.settings.name,
+    fromBusiness: args.settings.businessName,
+    fromEmail: args.settings.email,
+    clientName: args.clientName,
+    projectName: args.projectName,
+    issuedAt: new Date().toISOString().slice(0, 10),
+    dueDate: args.dueDate,
+    revisionRounds: args.revisionRounds,
+    rate: args.rate,
+    currency: args.currency,
+    deliverables: args.deliverables,
+    included: args.included,
+    excluded: args.excluded,
+    note: args.note,
+  };
+  return { ...base, checksum: checksum(JSON.stringify(base)) };
+}
+
+export function encodeSharedScope(scope: SharedScope): string {
+  return toBase64Url(gzipSync(strToU8(JSON.stringify(scope)), { level: 9 }));
+}
+
+export function decodeSharedScope(encoded: string): { scope: SharedScope | null; corrupted: boolean } {
+  try {
+    const json = strFromU8(gunzipSync(fromBase64Url(encoded)));
+    const parsed = JSON.parse(json) as SharedScope;
+    if (!parsed || parsed.v !== 1 || !Array.isArray(parsed.deliverables)) return { scope: null, corrupted: true };
+    const { checksum: embedded, ...rest } = parsed;
+    return { scope: parsed, corrupted: embedded !== checksum(JSON.stringify(rest)) };
+  } catch {
+    return { scope: null, corrupted: true };
+  }
+}

@@ -18,6 +18,7 @@ moment visible and gives you the sentence.
 | Ledger | Every request is a line item: absorbed, billed, declined, or held. Monthly totals, leak rate, per-project scope tax. |
 | Replies | Four decisions × three tones, generated with the real project, client, hours and fee filled in. Editable before copying or emailing. |
 | Change orders | Itemised document, PDF export, self-contained approval link, client-side approval receipt with checksum, receipt verification, status tracking. |
+| Client scope page | Share a read-only, plain-language scope (included / not included / revisions) as a private link, so the boundary is agreed before the work starts. |
 | Leak report | Six-month chart, per-client breakdown, share card exported as PNG, copy-ready summary. |
 | Library | Eight reply scripts in-app, ten contract clauses publicly, plus change order and scope-of-work templates. |
 | Data | IndexedDB persistence, JSON export/import, sample workspace, full reset. |
@@ -71,7 +72,8 @@ app/
     reports/                   monthly leak report + share card
     library/                   reply scripts
     settings/                  defaults, data export/import/reset
-  c/                           public, serverless change order approval page
+  c/                           public change order review + approval page (payload in the URL fragment)
+  s/                           public read-only scope page a client can keep
   scope-clauses/               public clause library (SEO)
   templates/change-order/      public template (SEO)
   templates/scope-of-work/     public template (SEO)
@@ -112,8 +114,8 @@ Fully deterministic — no model, no network:
 npm test
 ```
 
-29 tests cover parsing, estimation, scope matching (including exclusions, quantity, modifiers, revision limits and rush
-premiums), share payload encoding/tampering detection, approval-receipt parsing, reply generation across decisions and
+32 tests cover parsing, scope sharing, estimation, scope matching (including exclusions, quantity, modifiers, revision limits and rush
+premiums), share payload encoding/tampering detection for change orders and scopes, approval-receipt parsing, reply generation across decisions and
 tones, real IndexedDB CRUD, change-order numbering, metrics, and full workspace export/import.
 
 What is **not** covered by automated tests: browser-only interactions (modals, clipboard, PNG export, PDF download,

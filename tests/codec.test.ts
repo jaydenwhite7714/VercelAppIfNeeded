@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { approvalReceipt, buildSharedOrder, checksum, decodeSharedOrder, encodeSharedOrder, MAX_SHARE_LENGTH, parseApprovalReceipt, shareUrl } from '@/lib/codec';
+import {
+  approvalReceipt,
+  buildSharedOrder,
+  buildSharedScope,
+  checksum,
+  decodeSharedOrder,
+  decodeSharedScope,
+  encodeSharedOrder,
+  encodeSharedScope,
+  MAX_SHARE_LENGTH,
+  parseApprovalReceipt,
+  shareUrl,
+} from '@/lib/codec';
 import { draftFor } from '@/lib/scripts';
 import type { ChangeOrder, Settings } from '@/lib/types';
 
@@ -117,5 +129,41 @@ describe('scripts', () => {
     const warm = draftFor('decline', { ...ctx, tone: 'warm' });
     const formal = draftFor('decline', { ...ctx, tone: 'formal' });
     expect(warm.body).not.toBe(formal.body);
+  });
+});
+
+describe('shared scope', () => {
+  const scopeInput = {
+    settings,
+    projectName: 'Halcyon Coffee — brand & site',
+    clientName: 'Maya Chen',
+    dueDate: '2026-11-10',
+    revisionRounds: 2,
+    rate: 95,
+    currency: 'USD' as const,
+    deliverables: [{ l: 'Homepage (1)', h: 8 }, { l: 'Interior pages (4)', h: 4 }],
+    included: ['2 rounds of revisions', 'Mobile responsive layout'],
+    excluded: ['Copywriting and page content', 'Paid ads and social content'],
+    note: 'Two rounds included; after that each round is quoted first.',
+  };
+
+  it('round-trips a scope document', () => {
+    const shared = buildSharedScope(scopeInput);
+    const encoded = encodeSharedScope(shared);
+    const { scope, corrupted } = decodeSharedScope(encoded);
+    expect(corrupted).toBe(false);
+    expect(scope?.deliverables).toHaveLength(2);
+    expect(scope?.excluded).toContain('Paid ads and social content');
+    expect(encoded.length).toBeLessThan(2000);
+  });
+
+  it('detects tampering', () => {
+    const shared = buildSharedScope(scopeInput);
+    const encoded = encodeSharedScope({ ...shared, revisionRounds: 99 });
+    expect(decodeSharedScope(encoded).corrupted).toBe(true);
+  });
+
+  it('rejects garbage', () => {
+    expect(decodeSharedScope('nope').scope).toBeNull();
   });
 });
