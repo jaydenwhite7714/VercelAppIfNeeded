@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import { ArrowRight, Plus, ScanSearch, Sparkles } from 'lucide-react';
 import { analyzeMessage, type AnalyzedAsk } from '@/lib/engine/analyze';
 import type { Ask, Project, Settings, Verdict } from '@/lib/types';
-import { saveAsk, uid } from '@/lib/db';
+import { saveAsk, saveAsks, uid } from '@/lib/db';
 import { SAMPLE_MESSAGES } from '@/lib/engine/parse';
 import { hoursLabel, money } from '@/lib/format';
 import { Button, Card, EmptyState, Field, Input, Select, Textarea, useToast } from '@/components/ui';
@@ -84,21 +84,19 @@ export function RequestChecker({
     if (!selected.length) return;
     setSaving(true);
     try {
-      for (const draft of selected) {
-        await saveAsk({
-          projectId: project.id,
-          title: draft.title,
-          sourceText: draft.text,
-          verdict: draft.verdict,
-          confidence: draft.confidence,
-          reasons: draft.reasons,
-          matchedScopeId: draft.matchedScopeId,
-          workLabel: draft.workLabel,
-          hours: draft.hours,
-          value: draft.value,
-          rush: draft.rush,
-        });
-      }
+      await saveAsks(selected.map((draft) => ({
+        projectId: project.id,
+        title: draft.title,
+        sourceText: draft.text,
+        verdict: draft.verdict,
+        confidence: draft.confidence,
+        reasons: draft.reasons,
+        matchedScopeId: draft.matchedScopeId,
+        workLabel: draft.workLabel,
+        hours: draft.hours,
+        value: draft.value,
+        rush: draft.rush,
+      })));
       setAdded(selected.length);
       setDrafts(null);
       setMessage('');

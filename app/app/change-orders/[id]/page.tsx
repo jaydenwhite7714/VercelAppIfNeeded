@@ -22,6 +22,7 @@ import {
   deleteChangeOrder,
   markChangeOrderApproved,
   markChangeOrderSent,
+  markChangeOrderDeclined,
   updateChangeOrder,
 } from '@/lib/db';
 import { useChangeOrder, useProject, useReadySettings } from '@/lib/hooks';
@@ -159,9 +160,11 @@ export default function ChangeOrderDetailPage() {
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-            <Pencil className="h-3.5 w-3.5" /> Edit
-          </Button>
+          {order.status === 'draft' ? (
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+              <Pencil className="h-3.5 w-3.5" /> Edit draft
+            </Button>
+          ) : null}
           {share ? (
             <Button
               variant="outline"
@@ -309,7 +312,7 @@ export default function ChangeOrderDetailPage() {
                 className="w-full justify-start"
                 disabled={order.status === 'declined' || order.status === 'approved'}
                 onClick={async () => {
-                  await updateChangeOrder(order.id, { status: 'declined' });
+                  await markChangeOrderDeclined(order.id);
                   push('Marked as declined. The request stays in the ledger.');
                 }}
               >
@@ -337,13 +340,17 @@ export default function ChangeOrderDetailPage() {
                 </div>
               ))}
             </dl>
-            <button
-              type="button"
-              onClick={() => setDeleteOpen(true)}
-              className="mt-3 inline-flex items-center gap-1 text-[11.5px] text-accent-deep transition-opacity hover:opacity-70"
-            >
-              <Trash2 className="h-3 w-3" /> Delete change order
-            </button>
+            {order.status === 'draft' ? (
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                className="mt-3 inline-flex items-center gap-1 text-[11.5px] text-accent-deep transition-opacity hover:opacity-70"
+              >
+                <Trash2 className="h-3 w-3" /> Delete draft change order
+              </button>
+            ) : (
+              <p className="mt-3 text-[11px] text-ink-mute">This {order.status} record is kept to preserve the approval history.</p>
+            )}
           </Card>
         </div>
       </div>

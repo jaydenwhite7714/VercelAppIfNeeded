@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight, BadgeCheck, Check, Download, Mail, ShieldCheck } from 'lucide-react';
 import { ChangeOrderDocument } from '@/components/app/ChangeOrderDocument';
 import { Button, Card, CopyButton, Field, Input, Modal, Skeleton, Textarea } from '@/components/ui';
-import { approvalReceipt, decodeSharedOrder, type SharedChangeOrder } from '@/lib/codec';
+import { approvalReceipt, decodeSharedOrder, isChangeOrderExpired, type SharedChangeOrder } from '@/lib/codec';
 import { downloadChangeOrderPdf } from '@/lib/pdf';
 import { Wordmark } from '@/components/brand';
 import { money } from '@/lib/format';
@@ -42,6 +42,7 @@ export default function ClientChangeOrderPage() {
   }, []);
 
   const order = state.status === 'ready' ? state.order : null;
+  const expired = isChangeOrderExpired(order?.validUntil);
 
   const receipt = useMemo(() => {
     if (!order || !approvedAt) return '';
@@ -107,8 +108,7 @@ export default function ClientChangeOrderPage() {
                     <h2 className="text-[17px] text-sage">Approved — here is your receipt.</h2>
                     <p className="mt-1 text-[12.5px] leading-relaxed text-ink-soft">
                       Nothing is sent automatically. Copy the receipt below and reply to {order!.fromName}
-                      {order!.fromEmail ? ` (${order!.fromEmail})` : ''} so it is on record. A timestamped receipt protects
-                      both sides.
+                      {order!.fromEmail ? ` (${order!.fromEmail})` : ''} so it is on record. A timestamped receipt gives both sides a copy of the decision.
                     </p>
                     <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-card p-3 font-mono text-[10.5px] leading-relaxed text-ink-soft">
                       {receipt}
@@ -163,6 +163,14 @@ export default function ClientChangeOrderPage() {
                     </Button>
                   </a>
                 ) : null}
+              </Card>
+            ) : expired ? (
+              <Card className="mt-5 border-gold/30 bg-gold-soft/40 p-5">
+                <h2 className="text-[17px]">This change order has expired.</h2>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-soft">
+                  The review date was {order!.validUntil}. This link is read-only now; ask {order!.fromName} for an updated proposal before approving.
+                </p>
+                {order!.fromEmail ? <a className="mt-3 inline-block" href={`mailto:${order!.fromEmail}?subject=${encodeURIComponent(`Updated change order requested: ${order!.number}`)}`}><Button size="sm" variant="outline"><Mail className="h-3.5 w-3.5" /> Ask for an updated proposal</Button></a> : null}
               </Card>
             ) : (
               <Card className="mt-5 p-5">

@@ -8,10 +8,17 @@ import {
   importWorkspace,
   resetWorkspace,
   saveAsk,
+  saveAsks,
   saveSettings,
   seedDemoWorkspace,
+  markChangeOrderSent,
+  markChangeOrderApproved,
+  markChangeOrderDeclined,
+  deleteChangeOrder,
+  updateChangeOrder,
   updateProject,
   getSettings,
+  validateWorkspace,
 } from '@/lib/db';
 import { buildSharedOrder, encodeSharedOrder, MAX_SHARE_LENGTH, shareUrl } from '@/lib/codec';
 import { computeMetrics } from '@/lib/hooks';
@@ -62,6 +69,29 @@ describe('workspace persistence', () => {
     expect((await db.projects.get(project.id))?.status).toBe('paused');
   });
 
+  it('rejects invalid project prices and request values before storing them', async () => {
+    await expect(createProject({ name: 'Bad', clientName: 'Client', rate: Number.NaN, startDate: '2026-10-01', revisionRounds: 1, scope: [] })).rejects.toThrow(/positive number/i);
+    const project = await createProject({ name: 'Valid', clientName: 'Client', rate: 100, startDate: '2026-10-01', revisionRounds: 1, scope: [] });
+    await expect(saveAsk({ projectId: project.id, title: 'Bad value', sourceText: 'Add work', verdict: 'extra', confidence: 0.8, reasons: [], hours: 2, value: Number.NaN, rush: false })).rejects.toThrow(/valid non-negative/i);
+    expect(await getDb()!.asks.count()).toBe(0);
+  });
+
+  it('saves a batch of parsed requests atomically', async () => {
+    const project = await createProject({ name: 'Batch test', clientName: 'Client', rate: 100, startDate: '2026-10-01', revisionRounds: 1, scope: [] });
+    const valid = { projectId: project.id, title: 'Valid item', sourceText: 'Valid item', verdict: 'extra' as const, confidence: 0.8, reasons: [], hours: 1, value: 100, rush: false };
+    await expect(saveAsks([valid, { ...valid, title: '', sourceText: '' }])).rejects.toThrow(/needs a title/i);
+    expect(await getDb()!.asks.count()).toBe(0);
+    const saved = await saveAsks([valid, { ...valid, title: 'Second item', sourceText: 'Second item' }]);
+    expect(saved).toHaveLength(2);
+    expect(await getDb()!.asks.count()).toBe(2);
+  });
+
+  it('does not overwrite settings when an invalid rate is submitted', async () => {
+    await saveSettings({ name: 'Keep me', hourlyRate: 95 });
+    await expect(saveSettings({ hourlyRate: Number.NaN })).rejects.toThrow(/positive number/i);
+    expect((await getSettings())?.hourlyRate).toBe(95);
+  });
+
   it('logs settings as a single record', async () => {
     await saveSettings({ name: 'Sam R.' });
     const settings = await getSettings();
@@ -99,6 +129,8 @@ describe('workspace persistence', () => {
     expect(result.changeOrder?.total).toBe(380);
     expect(result.ask.status).toBe('billed');
     expect(result.ask.changeOrderId).toBe(result.changeOrder?.id);
+    const repeated = await decideAsk(ask.id, 'bill', settings, { hours: 4, value: 380 });
+    expect(repeated.changeOrder?.id).toBe(result.changeOrder?.id);
 
     const db = getDb()!;
     const orders = await db.changeOrders.toArray();
@@ -106,7 +138,7 @@ describe('workspace persistence', () => {
     expect(orders[0].timelineImpact).toMatch(/business day/);
 
     const activity = await db.activity.toArray();
-    expect(activity.some((event) => event.type === 'billed')).toBe(true);
+    expect(activity.some((event) => event.type === 'change-order')).toBe(true);
 
     // a second billed request must increment the change order number
     const second = await saveAsk({
@@ -122,6 +154,49 @@ describe('workspace persistence', () => {
     });
     const secondResult = await decideAsk(second.id, 'bill', settings);
     expect(secondResult.changeOrder?.number).toBe('CO-002');
+  });
+
+  it('does not reuse a deleted change-order number', async () => {
+    const settings = await freshWorkspace();
+    const project = await createProject({ name: 'Number test', clientName: 'Client', rate: 100, startDate: '2026-10-01', revisionRounds: 1, scope: [] });
+    const first = await saveAsk({ projectId: project.id, title: 'First extra', sourceText: 'First extra', verdict: 'extra', confidence: 0.8, reasons: [], hours: 1, value: 100, rush: false });
+    const second = await saveAsk({ projectId: project.id, title: 'Second extra', sourceText: 'Second extra', verdict: 'extra', confidence: 0.8, reasons: [], hours: 1, value: 100, rush: false });
+    const firstOrder = (await decideAsk(first.id, 'bill', settings)).changeOrder!;
+    await deleteChangeOrder(firstOrder.id);
+    const secondOrder = (await decideAsk(second.id, 'bill', settings)).changeOrder!;
+    expect(firstOrder.number).toBe('CO-001');
+    expect(secondOrder.number).toBe('CO-002');
+  });
+
+  it('keeps a declined change order and its linked request in sync', async () => {
+    const settings = await freshWorkspace();
+    const project = await createProject({ name: 'Decline test', clientName: 'Client', rate: 100, startDate: '2026-10-01', revisionRounds: 1, scope: [] });
+    const ask = await saveAsk({ projectId: project.id, title: 'New section', sourceText: 'Add a new section', verdict: 'extra', confidence: 0.8, reasons: [], hours: 1, value: 100, rush: false });
+    const { changeOrder } = await decideAsk(ask.id, 'bill', settings);
+    await markChangeOrderSent(changeOrder!.id);
+    await markChangeOrderDeclined(changeOrder!.id);
+    const db = getDb()!;
+    expect((await db.changeOrders.get(changeOrder!.id))?.status).toBe('declined');
+    expect((await db.asks.get(ask.id))?.status).toBe('declined');
+    expect((await db.asks.get(ask.id))?.changeOrderId).toBe(changeOrder!.id);
+  });
+
+  it('preserves sent and approved change-order history and does not duplicate approval entries', async () => {
+    const settings = await freshWorkspace();
+    const project = await createProject({ name: 'Ledger project', clientName: 'Client', rate: 100, startDate: '2026-10-01', revisionRounds: 1, scope: [] });
+    const ask = await saveAsk({ projectId: project.id, title: 'Add a page', sourceText: 'Add a page', verdict: 'extra', confidence: 0.8, reasons: [], hours: 2, value: 200, rush: false });
+    const { changeOrder } = await decideAsk(ask.id, 'bill', settings);
+    expect(changeOrder).toBeTruthy();
+    await markChangeOrderSent(changeOrder!.id);
+    await markChangeOrderSent(changeOrder!.id);
+    await markChangeOrderApproved(changeOrder!.id, 'Client', 'receipt-1');
+    await markChangeOrderApproved(changeOrder!.id, 'Client', 'receipt-1');
+
+    await expect(deleteChangeOrder(changeOrder!.id)).rejects.toThrow(/preserved/i);
+    await expect(updateChangeOrder(changeOrder!.id, { total: 1 })).rejects.toThrow(/Only draft/i);
+    const db = getDb()!;
+    expect((await db.changeOrders.get(changeOrder!.id))?.total).toBe(200);
+    expect((await db.activity.toArray()).filter((entry) => entry.type === 'approved')).toHaveLength(1);
   });
 
   it('records absorbed work without creating a change order', async () => {
@@ -170,6 +245,18 @@ describe('workspace persistence', () => {
     await importWorkspace(JSON.parse(JSON.stringify(dumped)));
     expect(await getDb()!.projects.count()).toBe(dumped.projects.length);
     expect(await getDb()!.asks.count()).toBe(dumped.asks.length);
+  });
+
+  it('rejects malformed backups without clearing the existing workspace', async () => {
+    await seedDemoWorkspace();
+    const existingProjects = await getDb()!.projects.count();
+    const invalid = await exportWorkspace();
+    const damaged = JSON.parse(JSON.stringify(invalid)) as Record<string, unknown>;
+    damaged.projects = [{ name: 'missing required project fields' }];
+
+    expect(validateWorkspace(damaged)).toBe(false);
+    await expect(importWorkspace(damaged as never)).rejects.toThrow(/existing workspace was not changed/i);
+    expect(await getDb()!.projects.count()).toBe(existingProjects);
   });
 
   it('produces a shareable link that fits in a URL for a real change order', async () => {

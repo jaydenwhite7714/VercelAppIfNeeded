@@ -30,6 +30,10 @@ export interface SharedChangeOrder {
 
 export const MAX_SHARE_LENGTH = 7000;
 
+export function isChangeOrderExpired(validUntil?: string, now = new Date()): boolean {
+  return Boolean(validUntil && validUntil < now.toISOString().slice(0, 10));
+}
+
 function toBase64Url(bytes: Uint8Array): string {
   let binary = '';
   const chunk = 0x8000;

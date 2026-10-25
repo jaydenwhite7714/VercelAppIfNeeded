@@ -8,6 +8,7 @@ import {
   decodeSharedScope,
   encodeSharedOrder,
   encodeSharedScope,
+  isChangeOrderExpired,
   MAX_SHARE_LENGTH,
   parseApprovalReceipt,
   shareUrl,
@@ -129,6 +130,14 @@ describe('scripts', () => {
     const warm = draftFor('decline', { ...ctx, tone: 'warm' });
     const formal = draftFor('decline', { ...ctx, tone: 'formal' });
     expect(warm.body).not.toBe(formal.body);
+  });
+});
+
+describe('change-order validity window', () => {
+  it('allows approvals through the inclusive expiry date and blocks links afterward', () => {
+    expect(isChangeOrderExpired('2026-10-25', new Date('2026-10-25T23:59:00Z'))).toBe(false);
+    expect(isChangeOrderExpired('2026-10-25', new Date('2026-10-26T00:00:00Z'))).toBe(true);
+    expect(isChangeOrderExpired(undefined, new Date('2026-10-26T00:00:00Z'))).toBe(false);
   });
 });
 

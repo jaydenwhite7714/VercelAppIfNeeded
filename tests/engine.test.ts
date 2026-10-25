@@ -115,6 +115,12 @@ describe('analyzeAsk', () => {
     expect(result.reasons.map((r) => r.text).join(' ')).toMatch(/leaves this out/i);
   });
 
+  it('keeps a large unmatched request uncertain instead of treating effort as proof it is extra', () => {
+    const result = analyze('Could you integrate the payment system with our CRM?');
+    expect(result.verdict).toBe('gray');
+    expect(result.reasons.map((reason) => reason.text).join(' ')).toMatch(/cannot infer whether your agreement includes it/i);
+  });
+
   it('prices rush work higher', () => {
     const normal = analyze('add a pricing page');
     const rush = analyze('add a pricing page by tomorrow, urgent');

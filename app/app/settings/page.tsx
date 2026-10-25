@@ -51,20 +51,25 @@ export default function SettingsPage() {
 
   async function save() {
     setSaving(true);
-    await saveSettings({
-      name,
-      businessName,
-      role,
-      email,
-      hourlyRate: rate,
-      currency,
-      includedRevisions: revisions,
-      rushMultiplier: rush,
-      tone,
-      terms,
-    });
-    setSaving(false);
-    push('Settings saved.');
+    try {
+      await saveSettings({
+        name,
+        businessName,
+        role,
+        email,
+        hourlyRate: rate,
+        currency,
+        includedRevisions: revisions,
+        rushMultiplier: rush,
+        tone,
+        terms,
+      });
+      push('Settings saved.');
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not save settings.', 'error');
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function exportData() {

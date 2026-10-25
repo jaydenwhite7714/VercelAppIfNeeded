@@ -152,7 +152,7 @@ export const VERDICT_META: Record<Verdict, { label: string; short: string; descr
 export const ASK_STATUS_META: Record<AskStatus, { label: string; description: string }> = {
   open: { label: 'Undecided', description: 'No decision logged yet.' },
   absorbed: { label: 'Absorbed', description: 'You did it for free. Logged as goodwill.' },
-  billed: { label: 'Billed', description: 'Sent as a change order.' },
+  billed: { label: 'Change order', description: 'A change-order record exists. Confirm separately when you actually send it.' },
   declined: { label: 'Declined', description: 'Politely turned down.' },
   clarified: { label: 'Held', description: 'Parked until the scope is confirmed.' },
 };

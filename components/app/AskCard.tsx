@@ -124,7 +124,7 @@ export function AskCard({
         >
           <MessageSquareText className="h-3 w-3" /> {expanded ? 'Hide message' : 'Message'}
         </button>
-        {ask.status === 'billed' && ask.changeOrderId ? (
+        {ask.changeOrderId ? (
           <Link href={`/app/change-orders/${ask.changeOrderId}`} className="inline-flex items-center gap-1 text-[11px] font-medium text-sage">
             <FileSignature className="h-3 w-3" /> View change order
           </Link>
