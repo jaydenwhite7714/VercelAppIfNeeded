@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isSameOriginRequest } from '@/lib/auth/origin';
 import { readJsonBody } from '@/lib/auth/request';
-import { emailOnlySchema, normalizeEmail } from '@/lib/auth/validation';
+import { authErrorMessage, emailOnlySchema, normalizeEmail } from '@/lib/auth/validation';
 import { accountSetupIssue, createSupabaseServerClient, getAppOrigin } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -19,7 +19,11 @@ export async function POST(request: Request) {
     const supabase = await createSupabaseServerClient();
     const emailRedirectTo = new URL('/auth/callback?next=/account/verified', getAppOrigin(request.url)).toString();
     const { error } = await supabase.auth.resend({ type: 'signup', email: normalizeEmail(parsed.data.email), options: { emailRedirectTo } });
-    if (error) return NextResponse.json({ error: 'We could not request a verification email. Nothing was confirmed as sent; try again later.' }, { status: 502 });
+    if (error) {
+      const safe = authErrorMessage(error.message);
+      if (safe.status === 429) return NextResponse.json({ error: safe.message }, { status: 429, headers: { 'Cache-Control': 'no-store' } });
+      return NextResponse.json({ error: 'We could not request a verification email. Nothing was confirmed as sent; try again later.' }, { status: 502 });
+    }
     return NextResponse.json({ message: 'If the address has an unverified account, a verification request was accepted. Check your inbox and spam; delivery is not guaranteed.' }, { headers: { 'Cache-Control': 'no-store' } });
   } catch {
     return NextResponse.json({ error: 'We could not request a verification email. Nothing was confirmed as sent; try again later.' }, { status: 502 });

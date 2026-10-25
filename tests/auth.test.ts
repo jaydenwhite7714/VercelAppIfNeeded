@@ -194,6 +194,11 @@ describe('provider-backed auth route behavior', () => {
     const genericResponse = await signup(jsonRequest('/api/auth/signup', validSignup));
     expect(genericResponse.status).toBe(400);
     expect((await payload(genericResponse)).error).not.toContain('upstream internal host');
+
+    auth.signUp.mockResolvedValueOnce({ data: { user: null }, error: { message: 'Email rate limit exceeded.' } });
+    const limited = await signup(jsonRequest('/api/auth/signup', validSignup));
+    expect(limited.status).toBe(429);
+    expect((await payload(limited)).error).toMatch(/wait a little while/i);
   });
 
   it('returns the exact username-conflict message before creating an account when a handle is already taken', async () => {
@@ -254,6 +259,10 @@ describe('provider-backed auth route behavior', () => {
     expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
     const verified = await signin(jsonRequest('/api/auth/signin', { email: 'person@example.com', password: validSignup.password }));
     expect(verified.status).toBe(200);
+    auth.signInWithPassword.mockResolvedValueOnce({ data: { user: null }, error: { message: 'Too many requests; rate limit reached.' } });
+    const limited = await signin(jsonRequest('/api/auth/signin', { email: 'person@example.com', password: validSignup.password }));
+    expect(limited.status).toBe(429);
+    expect((await payload(limited)).error).toMatch(/wait a little while/i);
   });
 
   it('requests email verification with a safe, non-enumerating retry response', async () => {
@@ -263,6 +272,10 @@ describe('provider-backed auth route behavior', () => {
     expect(String((await payload(response)).message)).toMatch(/if the address has an unverified account/i);
     auth.resend.mockResolvedValueOnce({ error: { message: 'mail service down' } });
     expect((await resend(jsonRequest('/api/auth/resend', { email: 'person@example.com' }))).status).toBe(502);
+    auth.resend.mockResolvedValueOnce({ error: { message: 'For security purposes, you can only request this after 60 seconds.' } });
+    const limited = await resend(jsonRequest('/api/auth/resend', { email: 'person@example.com' }));
+    expect(limited.status).toBe(429);
+    expect((await payload(limited)).error).toMatch(/wait a little while/i);
   });
 
   it('requests password reset without revealing whether the account exists', async () => {
@@ -272,6 +285,10 @@ describe('provider-backed auth route behavior', () => {
     expect(String((await payload(response)).message)).toMatch(/if an account exists/i);
     auth.resetPasswordForEmail.mockResolvedValueOnce({ error: { message: 'mail service down' } });
     expect((await reset(jsonRequest('/api/auth/reset', { email: 'person@example.com' }))).status).toBe(502);
+    auth.resetPasswordForEmail.mockResolvedValueOnce({ error: { message: 'Email rate limit exceeded.' } });
+    const limited = await reset(jsonRequest('/api/auth/reset', { email: 'person@example.com' }));
+    expect(limited.status).toBe(429);
+    expect((await payload(limited)).error).toMatch(/wait a little while/i);
   });
 
   it('uses provider single-use callback codes and rejects invalid, expired, or reused links', async () => {

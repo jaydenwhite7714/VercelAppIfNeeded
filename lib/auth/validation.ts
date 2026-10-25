@@ -50,7 +50,7 @@ export function safeNextPath(value: string | null | undefined): string {
 
 export function authErrorMessage(message: string): { status: number; message: string } {
   const lower = message.toLowerCase();
-  if (lower.includes('rate limit') || lower.includes('too many requests')) {
+  if (lower.includes('rate limit') || lower.includes('too many requests') || (lower.includes('for security purposes') && lower.includes('seconds'))) {
     return { status: 429, message: 'Too many account requests. Wait a little while and try again.' };
   }
   if (lower.includes('smtp') || lower.includes('sending confirmation email') || lower.includes('email provider') || lower.includes('failed to send')) {

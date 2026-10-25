@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isSameOriginRequest } from '@/lib/auth/origin';
 import { readJsonBody } from '@/lib/auth/request';
-import { signInSchema, normalizeEmail } from '@/lib/auth/validation';
+import { authErrorMessage, signInSchema, normalizeEmail } from '@/lib/auth/validation';
 import { accountSetupIssue, createSupabaseServerClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +21,13 @@ export async function POST(request: Request) {
       email: normalizeEmail(parsed.data.email),
       password: parsed.data.password,
     });
-    if (error || !data.user) return NextResponse.json({ error: 'Email or password is incorrect. If you have not verified your email, check your inbox or request a new link.' }, { status: 401 });
+    if (error || !data.user) {
+      if (error) {
+        const safe = authErrorMessage(error.message);
+        if (safe.status === 429) return NextResponse.json({ error: safe.message }, { status: 429, headers: { 'Cache-Control': 'no-store' } });
+      }
+      return NextResponse.json({ error: 'Email or password is incorrect. If you have not verified your email, check your inbox or request a new link.' }, { status: 401 });
+    }
     if (!data.user.email_confirmed_at) {
       await supabase.auth.signOut({ scope: 'local' });
       return NextResponse.json({ error: 'Verify your email before signing in. Request a fresh verification link if needed.' }, { status: 403 });
