@@ -254,7 +254,7 @@ export function RequestChecker({
                   <p className="mono-label">Found in the message</p>
                   <p className="mt-1 text-[13px]">
                     <span className="font-medium">{totals.count}</span> selected ·{' '}
-                    <span className="tnum">{hoursLabel(totals.hours)}</span> ·{' '}
+                    <span className="tnum">Est. {hoursLabel(totals.hours)}</span> ·{' '}
                     <span className="tnum font-medium">{money(totals.value, settings.currency)}</span> outside your scope
                   </p>
                 </div>

@@ -25,6 +25,7 @@ export default function OnboardingPage() {
   const [rushMultiplier, setRushMultiplier] = useState(1.5);
   const [tone, setTone] = useState<Tone>('warm');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -33,6 +34,7 @@ export default function OnboardingPage() {
 
   async function finish(seed = false) {
     setSaving(true);
+    setError(null);
     try {
       if (!seed) {
         await saveSettings({
@@ -53,6 +55,8 @@ export default function OnboardingPage() {
         await seedDemoWorkspace();
         router.push('/app');
       }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not finish setup. Your data was not changed.');
     } finally {
       setSaving(false);
     }
@@ -234,6 +238,7 @@ export default function OnboardingPage() {
         </div>
 
         <div className="mx-auto flex w-full max-w-[440px] flex-col gap-3 border-t border-line pt-5">
+          {error ? <p role="alert" className="rounded-lg border border-accent/25 bg-accent-soft px-3 py-2 text-[12px] leading-relaxed text-accent-deep">{error}</p> : null}
           <div className="flex items-center justify-between gap-3">
             <Button
               variant="ghost"
@@ -254,8 +259,9 @@ export default function OnboardingPage() {
           </div>
           <button
             type="button"
+            disabled={saving}
             onClick={() => finish(true)}
-            className="text-center text-[11.5px] text-ink-mute transition-colors hover:text-ink"
+            className="text-center text-[11.5px] text-ink-mute transition-colors hover:text-ink disabled:opacity-50"
           >
             Or explore with a sample workspace first
           </button>

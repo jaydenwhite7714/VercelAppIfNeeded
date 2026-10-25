@@ -15,7 +15,7 @@ moment visible and gives you the sentence.
 | Area | What works |
 | --- | --- |
 | Scope check | Deterministic parser + matcher + pricing engine. Splits emails into requests, matches deliverables, inclusions and exclusions, counts revision rounds, applies quantity and rush logic, shows its reasoning. |
-| Ledger | Every request is a line item: absorbed, billed, declined, or held. Monthly totals, leak rate, per-project scope tax. |
+| Ledger | Every request is a line item: absorbed, approved, declined, or held. Monthly estimates and approved-order totals are reported separately; actual time and payments are not tracked. |
 | Replies | Four decisions × three tones, generated with the real project, client, hours and fee filled in. Editable before copying or emailing. |
 | Change orders | Itemised document, PDF export, self-contained approval link, client-side approval receipt with checksum, receipt verification, status tracking. |
 | Client scope page | Share a read-only, plain-language scope (included / not included / revisions) as a private link, so the boundary is agreed before the work starts. |
@@ -114,7 +114,7 @@ Fully deterministic — no model, no network:
 npm test
 ```
 
-32 tests cover parsing, scope sharing, estimation, scope matching (including exclusions, quantity, modifiers, revision limits and rush
+49 tests cover parsing, scope sharing, estimation, scope matching (including exclusions, quantity, modifiers, revision limits and rush
 premiums), share payload encoding/tampering detection for change orders and scopes, approval-receipt parsing, reply generation across decisions and
 tones, real IndexedDB CRUD, change-order numbering, metrics, and full workspace export/import.
 
@@ -144,8 +144,8 @@ Or import the repository in the Vercel dashboard: framework preset **Next.js**, 
 ## Deliberate limitations
 
 - **No accounts or cloud sync** — data is per-browser, by design. JSON export/import is the transfer path.
-- **Client approval is client-side** — the approval page produces a signed-checksum receipt for the client to send back;
-  the freelancer verifies it in the ledger. A hosted approval API would be the next step if multi-party sync is wanted.
+- **Client approval is client-side** — the approval page creates a text receipt with a lightweight checksum for the client to send back manually. The ledger checks that the pasted receipt's checksum, order number, amount and currency match the current document. This checksum is not a cryptographic signature: it cannot authenticate who sent the text or prove that the client approved it. Approved order totals are not evidence of payment received.
+- **No time or payment tracking** — hours and absorbed-work values are estimates attached to requests; approved change orders reflect a recorded approval status, not confirmed invoicing or payment.
 - **Estimates are heuristics** — market medians per unit of work, not a prediction for a specific project.
 - **Not legal advice** — the clause library is plain-language starter text, not a reviewed contract.
 

@@ -94,7 +94,7 @@ export default function ReportsPage() {
 
   const activeMonth = months.find((month) => month.key === selected) ?? months[months.length - 1];
   const maxValue = Math.max(1, ...data.series.flatMap((month) => [month.absorbed, month.billed]));
-  const summary = `In ${activeMonth.label.split(' ')[0]} I absorbed ${money(data.absorbedValue, settings?.currency ?? 'USD')} of client work — ${hoursLabel(
+  const summary = `In ${activeMonth.label.split(' ')[0]} I absorbed ${money(data.absorbedValue, settings?.currency ?? 'USD')} of client work — an estimated ${hoursLabel(
     data.absorbedHours,
   )} across ${data.absorbedAsks.length} request${data.absorbedAsks.length === 1 ? '' : 's'}${
     data.biggestProject ? `, the biggest from ${data.biggestProject.clientName}` : ''
@@ -139,7 +139,7 @@ export default function ReportsPage() {
       <PageHeader
         eyebrow="Leak report"
         title="The number you can act on"
-        description="What you absorbed, what you recovered, and what your rate actually turned out to be. Everything here comes from decisions you logged."
+        description="Amounts for absorbed work use each request’s estimated hours and your saved rate; approved values come from orders marked approved. Hours are not time-tracked and payments are not verified."
         actions={
           <div className="rounded-xl border border-line bg-card px-3 py-2">
             <p className="mono-label">all time</p>
@@ -194,11 +194,11 @@ export default function ReportsPage() {
                       {money(data.absorbedValue, settings.currency)}
                     </p>
                     <p className="mt-1.5 text-[11.5px] text-ink-mute">
-                      {hoursLabel(data.absorbedHours)} · {data.absorbedAsks.length} requests
+                      Estimated {hoursLabel(data.absorbedHours)} · {data.absorbedAsks.length} requests
                     </p>
                   </div>
                   <div className="sm:border-l sm:border-line sm:pl-4">
-                    <p className="mono-label">Recovered</p>
+                    <p className="mono-label">Approved orders</p>
                     <p className="mt-1 font-display text-[clamp(1.9rem,4vw,2.5rem)] leading-none tracking-[-0.04em] tnum text-sage">
                       {money(data.billedValue, settings.currency)}
                     </p>
@@ -236,7 +236,7 @@ export default function ReportsPage() {
                         type="button"
                         onClick={() => setSelected(month.key)}
                         className="group flex flex-1 flex-col items-center gap-1.5"
-                        title={`${month.label}: ${money(month.absorbed, settings.currency)} absorbed, ${money(month.billed, settings.currency)} billed`}
+                        title={`${month.label}: ${money(month.absorbed, settings.currency)} absorbed, ${money(month.billed, settings.currency)} in approved orders`}
                       >
                         <div className="flex h-28 w-full items-end justify-center gap-1">
                           <div
@@ -258,7 +258,7 @@ export default function ReportsPage() {
                     <span className="h-2 w-2 rounded-sm bg-accent" /> absorbed
                   </span>
                   <span className="flex items-center gap-1.5 text-[10.5px] text-ink-mute">
-                    <span className="h-2 w-2 rounded-sm bg-sage" /> billed
+                    <span className="h-2 w-2 rounded-sm bg-sage" /> approved
                   </span>
                 </div>
               </Card>
@@ -267,8 +267,8 @@ export default function ReportsPage() {
                 <div className="px-4 pt-4 sm:px-5">
                   <SectionLabel>By client</SectionLabel>
                   <p className="mt-2 text-[11.5px] leading-relaxed text-ink-mute">
-                    “Scope tax” is the share of a project&apos;s value you gave away — absorbed work as a percentage of
-                    fee plus billed work.
+                    “Absorbed share” compares the value of logged absorbed requests with approved change-order value. It is an estimate from
+                    your entries, not a measure of total project revenue or a tax calculation.
                   </p>
                 </div>
                 {data.perProject.length ? (
@@ -278,8 +278,8 @@ export default function ReportsPage() {
                         <tr className="border-y border-line bg-paper/50">
                           <th className="mono-label px-4 py-2 text-left font-medium sm:px-5">Client</th>
                           <th className="mono-label px-3 py-2 text-right font-medium">Absorbed</th>
-                          <th className="mono-label px-3 py-2 text-right font-medium">Billed</th>
-                          <th className="mono-label px-4 py-2 text-right font-medium sm:px-5">Scope tax</th>
+                          <th className="mono-label px-3 py-2 text-right font-medium">Approved</th>
+                          <th className="mono-label px-4 py-2 text-right font-medium sm:px-5">Absorbed share</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -326,8 +326,8 @@ export default function ReportsPage() {
                     {money(data.absorbedValue, settings.currency)}
                   </p>
                   <p className="mt-2 text-[11.5px] text-paper/60">
-                    {hoursLabel(data.absorbedHours)} · {data.absorbedAsks.length} request{data.absorbedAsks.length === 1 ? '' : 's'}
-                    {data.billedValue > 0 ? ` · ${money(data.billedValue, settings.currency)} recovered` : ''}
+                    Est. {hoursLabel(data.absorbedHours)} · {data.absorbedAsks.length} request{data.absorbedAsks.length === 1 ? '' : 's'}
+                    {data.billedValue > 0 ? ` · ${money(data.billedValue, settings.currency)} approved` : ''}
                   </p>
                 </div>
                 <div className="mt-6 space-y-1.5">

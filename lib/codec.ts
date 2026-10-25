@@ -1,5 +1,5 @@
 import { gzipSync, gunzipSync, strToU8, strFromU8 } from 'fflate';
-import type { ChangeOrder, Currency, Settings } from './types';
+import { CURRENCIES, type ChangeOrder, type Currency, type Settings } from './types';
 
 /**
  * Change orders are shared as self-contained links: the entire document is
@@ -131,32 +131,33 @@ export function approvalReceipt(order: SharedChangeOrder, approvedBy: string, ti
 
 export interface ParsedApproval {
   approvedBy: string;
-  approvedAt?: number;
-  checksum?: string;
-  total?: number;
-  changeOrderNumber?: string;
+  approvedAt: number;
+  checksum: string;
+  total: number;
+  currency: Currency;
+  changeOrderNumber: string;
 }
 
 /**
- * Clients paste the receipt they generated on the approval page. Parsing it
- * lets the ledger verify the document matches before recording the money.
+ * Parse the complete receipt format. This checks its internal document details,
+ * not the approver's identity or the authenticity of the text (the checksum is
+ * an integrity check, not a cryptographic signature).
  */
 export function parseApprovalReceipt(text: string): ParsedApproval | null {
-  if (!text || typeof text !== 'string') return null;
-  const approvedBy = text.match(/Approved by:\s*(.+)/i)?.[1]?.trim();
-  if (!approvedBy) return null;
-  const approvedAtRaw = text.match(/Approved at:\s*(.+)/i)?.[1]?.trim();
+  if (!text || typeof text !== 'string' || text.length > 10_000) return null;
+  const approvedBy = text.match(/^Approved by:\s*(.+)$/im)?.[1]?.trim();
+  const approvedAtRaw = text.match(/^Approved at:\s*(.+)$/im)?.[1]?.trim();
   const parsedDate = approvedAtRaw ? Date.parse(approvedAtRaw) : NaN;
-  const checksumMatch = text.match(/Document checksum:\s*([a-z0-9]+)/i)?.[1]?.trim();
-  const totalMatch = text.match(/Total approved:\s*(?:[A-Z]{3}\s*)?([\d,]+(?:\.\d+)?)/i)?.[1];
-  const changeOrderNumber = text.match(/Change order:\s*([A-Za-z0-9-]+)/i)?.[1];
-  return {
-    approvedBy,
-    approvedAt: Number.isNaN(parsedDate) ? undefined : parsedDate,
-    checksum: checksumMatch,
-    total: totalMatch ? Number(totalMatch.replace(/,/g, '')) : undefined,
-    changeOrderNumber,
-  };
+  const checksumMatch = text.match(/^Document checksum:\s*([a-z0-9]{1,10})\s*$/im)?.[1];
+  const totalMatch = text.match(/^Total approved:\s*([A-Z]{3})\s*([\d,]+(?:\.\d{1,2})?)\s*$/im);
+  const changeOrderNumber = text.match(/^Change order:\s*([A-Za-z0-9-]+)(?:\s+—|$)/im)?.[1];
+  const currency = totalMatch?.[1] as Currency | undefined;
+  const total = totalMatch ? Number(totalMatch[2].replace(/,/g, '')) : NaN;
+  if (!approvedBy || approvedBy.length > 200 || !Number.isFinite(parsedDate) || !checksumMatch ||
+      !totalMatch || !Number.isFinite(total) || total < 0 || !currency || !CURRENCIES.some((option) => option.code === currency) || !changeOrderNumber) {
+    return null;
+  }
+  return { approvedBy, approvedAt: parsedDate, checksum: checksumMatch, total, currency, changeOrderNumber };
 }
 
 /* ------------------------------------------------------------ shared scope */

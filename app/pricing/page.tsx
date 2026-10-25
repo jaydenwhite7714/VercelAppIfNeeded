@@ -44,6 +44,10 @@ export default function PricingPage() {
             <div className="flex items-center gap-2 text-accent"><Sparkles className="h-4 w-4"/><p className="mono-label text-accent">Being explored</p></div>
             <h2 className="mt-3 text-2xl font-semibold">Unbilled Pro</h2>
             <p className="mt-3 text-sm leading-relaxed text-ink-mute">A paid plan is not available yet. Pro features, pricing, and license activation have not been released.</p>
+            <div className="my-4 rounded-xl border border-line bg-card p-3.5">
+              <p className="mono-label">Ideas only · not available</p>
+              <p className="mt-2 text-xs leading-relaxed text-ink-mute">Optional encrypted sync or team collaboration may be explored if demand can support the ongoing costs. The local, single-browser workspace is intended to remain free. No plan, price, or release date is committed.</p>
+            </div>
             <div className="my-5 rounded-xl border border-line bg-card p-3.5">
               <div className="flex items-start gap-2.5"><LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-ink-mute"/><p className="text-xs leading-relaxed text-ink-mute">There is no checkout button and this page will not ask you to pay. We’ll update this page when paid features actually exist.</p></div>
             </div>

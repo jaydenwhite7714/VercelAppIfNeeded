@@ -143,7 +143,7 @@ export default function LedgerPage() {
               </h2>
               <p className="mt-3 max-w-[48ch] text-[13.5px] leading-relaxed text-ink-soft">
                 Add a project with the scope you agreed to — what is included, what is not, and your rate. Then paste the
-                next client message. Unbilled will show you what it actually costs.
+                next client message. Unbilled will estimate its value from the hours and rates you enter.
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 <Button onClick={() => setProjectFormOpen(true)}>
@@ -180,7 +180,7 @@ export default function LedgerPage() {
                 ))}
               </div>
               <p className="mt-3 text-[11px] leading-relaxed text-ink-mute">
-                Absorbed, billed, declined, or held. Every request has a number attached.
+                Absorbed, approved, declined, or held. Every request has an estimated value.
               </p>
             </div>
           </div>
@@ -191,18 +191,18 @@ export default function LedgerPage() {
             <Stat
               label="Absorbed this month"
               value={money(metrics.absorbedThisMonth, settings.currency)}
-              sub={`${hoursLabel(metrics.absorbedHours)} given away across ${(asks ?? []).filter((a) => a.status === 'absorbed').length} requests${
+              sub={`${hoursLabel(metrics.absorbedHours)} estimated across ${(asks ?? []).filter((a) => a.status === 'absorbed').length} absorbed requests${
                 delta !== null ? ` · ${delta > 0 ? '+' : ''}${delta}% vs last month` : ''
               }`}
               tone="accent"
               icon={<HandHeart className="h-4 w-4 text-accent/70" />}
             />
             <Stat
-              label="Recovered this month"
+              label="Approved this month"
               value={money(metrics.billedThisMonth, settings.currency)}
               sub={
                 metrics.billedThisMonth > 0
-                  ? 'Approved change orders. This is money you kept.'
+                  ? 'Approved change-order value. Payments are not tracked.'
                   : 'No approved change orders yet this month.'
               }
               tone="sage"
@@ -284,7 +284,7 @@ export default function LedgerPage() {
               <Card className="p-4 sm:p-5">
                 <SectionLabel>Where it went</SectionLabel>
                 <p className="mt-3 text-[12px] leading-relaxed text-ink-mute">
-                  Every request you have logged, split by what you absorbed and what you billed.
+                  Logged absorbed request estimates compared with approved change-order totals.
                 </p>
                 <div className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-line/60">
                   <div className="h-full bg-accent transition-all" style={{ width: `${leakTotal > 0 ? absorbedShare : 0}%` }} />
@@ -295,7 +295,7 @@ export default function LedgerPage() {
                     {absorbedShare}% absorbed · {money(metrics.absorbedAllTime, settings.currency, { compact: true })}
                   </span>
                   <span className="text-sage">
-                    {money(metrics.billedAllTime, settings.currency, { compact: true })} billed
+                    {money(metrics.billedAllTime, settings.currency, { compact: true })} approved
                   </span>
                 </div>
                 <div className="mt-4 border-t border-line pt-3">
@@ -303,7 +303,7 @@ export default function LedgerPage() {
                   <p className="mt-1 text-[12px] leading-relaxed text-ink-soft">
                     {metrics.absorbedThisMonth === 0
                       ? 'Nothing absorbed yet. Keep it that way.'
-                      : `You absorbed ${money(metrics.absorbedThisMonth, settings.currency)} — ${hoursLabel(
+                      : `You absorbed ${money(metrics.absorbedThisMonth, settings.currency)} — an estimated ${hoursLabel(
                           metrics.absorbedHours,
                         )} that did not appear on an invoice.`}
                   </p>

@@ -39,18 +39,21 @@ const PHRASES = [
 const STATS = [
   {
     value: '52%',
-    label: 'of projects experience scope creep',
-    note: 'PMI, Pulse of the Profession',
+    label: 'of projects reported scope creep in a PMI survey',
+    note: 'PMI, Pulse of the Profession 2018',
+    sourceUrl: 'https://www.pmi.org/-/media/pmi/documents/public/pdf/learning/thought-leadership/pulse/pulse-of-the-profession-2018.pdf',
   },
   {
     value: '$1–5k',
-    label: 'lost every month by 57% of agencies to unbilled work',
+    label: 'monthly scope-creep losses reported by 57% of agencies',
     note: 'Ignition, 2025 agency survey',
+    sourceUrl: 'https://www.ignitionapp.com/2025-agency-pricing-cashflow-report',
   },
   {
-    value: '30–50%',
-    label: 'of an effective hourly rate can disappear into extra rounds',
-    note: 'Scope-creep analyses, 2024–2026',
+    value: '97%',
+    label: 'of agencies are chasing late payments',
+    note: 'Ignition, 2025 agency survey',
+    sourceUrl: 'https://www.ignitionapp.com/2025-agency-pricing-cashflow-report',
   },
 ];
 
@@ -337,7 +340,14 @@ export default function LandingPage() {
                 {stat.value}
               </p>
               <p className="mt-2.5 max-w-[26ch] text-[13.5px] leading-snug text-ink-soft">{stat.label}</p>
-              <p className="mono-label mt-2 normal-case tracking-[0.03em] text-ink-mute">{stat.note}</p>
+              <a
+                className="mono-label mt-2 inline-block normal-case tracking-[0.03em] text-ink-mute underline decoration-line-strong underline-offset-2 hover:text-ink"
+                href={stat.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {stat.note} <span aria-hidden="true">↗</span>
+              </a>
             </div>
           ))}
         </div>

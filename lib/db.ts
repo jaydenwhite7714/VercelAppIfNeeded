@@ -290,7 +290,7 @@ export async function markChangeOrderSent(id: string): Promise<void> {
   });
 }
 
-export async function markChangeOrderApproved(id: string, approvedBy: string, approvalId?: string): Promise<void> {
+export async function markChangeOrderApproved(id: string, approvedBy: string, approvalId?: string, approvedAt?: number): Promise<void> {
   const db = getDb();
   if (!db) return;
   await db.transaction('rw', db.changeOrders, db.activity, async () => {
@@ -298,7 +298,8 @@ export async function markChangeOrderApproved(id: string, approvedBy: string, ap
     if (!order || order.status === 'approved') return;
     if (order.status !== 'sent' && order.status !== 'draft') throw new Error('Only an active change order can be marked approved.');
     const now = Date.now();
-    await db.changeOrders.update(id, { status: 'approved', approvedAt: now, approvedBy, approvalId, updatedAt: now });
+    const approvalTime = approvedAt !== undefined && Number.isFinite(approvedAt) ? approvedAt : now;
+    await db.changeOrders.update(id, { status: 'approved', approvedAt: approvalTime, approvedBy, approvalId, updatedAt: now });
     await db.activity.put({
       id: uid(), at: now, type: 'approved',
       message: `${order.number} recorded as approved by ${approvedBy || 'client'} — ${order.currency} ${order.total.toLocaleString('en-US')}.`,

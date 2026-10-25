@@ -195,8 +195,8 @@ export default function ChangeOrderDetailPage() {
             <div>
               <p className="text-[13px] font-medium text-sage">Approved by {order.approvedBy || project.clientName}</p>
               <p className="text-[11.5px] text-sage/80">
-                {order.approvedAt ? formatDate(order.approvedAt) : ''} · {money(order.total, settings.currency)} added to the ledger
-                {order.approvalId ? ` · receipt ${order.approvalId}` : ''}
+                {order.approvedAt ? formatDate(order.approvedAt) : ''} · {money(order.total, settings.currency)} approved order value
+                {order.approvalId ? ` · receipt checksum ${order.approvalId}` : ''}
               </p>
             </div>
           </div>
@@ -328,8 +328,8 @@ export default function ChangeOrderDetailPage() {
               </Button>
             </div>
             <p className="mt-3 text-[11px] leading-relaxed text-ink-mute">
-              When a client approves through the link, they get a timestamped receipt to send back to you. Paste it into
-              the ledger by recording the approval here.
+              After confirming on the share page, the client can copy or download a text receipt. Bring it back manually;
+              matching details do not authenticate who sent it.
             </p>
           </Card>
 
@@ -367,7 +367,7 @@ export default function ChangeOrderDetailPage() {
         open={approveOpen}
         onClose={() => setApproveOpen(false)}
         title="Record the approval"
-        description="Approvals through the share link produce a receipt. Record it here so the ledger reflects the money."
+        description="Record the change order as approved only after you receive confirmation through your own channel. This status does not verify identity or payment."
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setApproveOpen(false)}>
@@ -512,7 +512,7 @@ export default function ChangeOrderDetailPage() {
         open={receiptOpen}
         onClose={() => setReceiptOpen(false)}
         title="Paste the client's approval receipt"
-        description="The client gets a receipt after approving through the share link. Pasting it here verifies the document and records the money."
+        description="Check that the receipt's amount, currency, order number and checksum match this version before recording it. This does not authenticate who approved or prove the text is genuine."
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setReceiptOpen(false)}>
@@ -522,16 +522,22 @@ export default function ChangeOrderDetailPage() {
               onClick={async () => {
                 const parsed = parseApprovalReceipt(receiptText);
                 if (!parsed) {
-                  setReceiptError('That does not look like an Unbilled receipt. It should include an “Approved by” line.');
+                  setReceiptError('This receipt is incomplete or malformed. Paste the full receipt generated from the client approval page.');
                   return;
                 }
-                if (parsed.checksum && share && parsed.checksum !== share.shared.checksum) {
-                  setReceiptError('This receipt belongs to a different version of the document. Re-send the current link before recording it.');
+                if (
+                  !share ||
+                  parsed.checksum !== share.shared.checksum ||
+                  parsed.changeOrderNumber !== share.shared.number ||
+                  parsed.total !== share.shared.total ||
+                  parsed.currency !== share.shared.currency
+                ) {
+                  setReceiptError('The receipt details do not match this version of the change order. Re-send the current link if it was updated.');
                   return;
                 }
-                await markChangeOrderApproved(order.id, parsed.approvedBy, parsed.checksum ?? share?.shared.checksum);
+                await markChangeOrderApproved(order.id, parsed.approvedBy, parsed.checksum, parsed.approvedAt);
                 setReceiptOpen(false);
-                push('Receipt verified — approval recorded.');
+                push('Receipt details match — approval recorded.');
               }}
             >
               Verify & record

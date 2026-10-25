@@ -98,6 +98,14 @@ describe('approval receipts', () => {
 
   it('rejects text that is not a receipt', () => {
     expect(parseApprovalReceipt('Looks good, go ahead!')).toBeNull();
+    expect(parseApprovalReceipt('Approved by: Maya Chen')).toBeNull();
+  });
+
+  it('requires all document details and a supported currency', () => {
+    const shared = buildSharedOrder(order, 'Halcyon Coffee', 'Maya Chen', 'maya@halcyoncoffee.com', settings);
+    const receipt = approvalReceipt(shared, 'Maya Chen', Date.UTC(2026, 9, 14, 15, 30));
+    expect(parseApprovalReceipt(receipt.replace(/^Document checksum:.*\n/m, ''))).toBeNull();
+    expect(parseApprovalReceipt(receipt.replace('USD 380', 'XYZ 380'))).toBeNull();
   });
 });
 

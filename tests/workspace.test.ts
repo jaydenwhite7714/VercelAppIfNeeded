@@ -216,13 +216,15 @@ describe('workspace persistence', () => {
     expect(changeOrder).toBeTruthy();
     await markChangeOrderSent(changeOrder!.id);
     await markChangeOrderSent(changeOrder!.id);
-    await markChangeOrderApproved(changeOrder!.id, 'Client', 'receipt-1');
+    const clientApprovedAt = Date.UTC(2026, 9, 14, 15, 30);
+    await markChangeOrderApproved(changeOrder!.id, 'Client', 'receipt-1', clientApprovedAt);
     await markChangeOrderApproved(changeOrder!.id, 'Client', 'receipt-1');
 
     await expect(deleteChangeOrder(changeOrder!.id)).rejects.toThrow(/preserved/i);
     await expect(updateChangeOrder(changeOrder!.id, { total: 1 })).rejects.toThrow(/Only draft/i);
     const db = getDb()!;
     expect((await db.changeOrders.get(changeOrder!.id))?.total).toBe(200);
+    expect((await db.changeOrders.get(changeOrder!.id))?.approvedAt).toBe(clientApprovedAt);
     expect((await db.activity.toArray()).filter((entry) => entry.type === 'approved')).toHaveLength(1);
   });
 

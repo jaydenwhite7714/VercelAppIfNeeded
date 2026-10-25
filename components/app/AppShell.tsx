@@ -39,6 +39,9 @@ const SECONDARY: NavItem[] = [
   { href: '/app/settings', label: 'Settings', short: 'Settings', icon: Settings2 },
 ];
 
+// Keep the secondary reply library reachable in the mobile workspace as well.
+const MOBILE_NAV: NavItem[] = [...NAV, SECONDARY[0]];
+
 function NavLink({ item, active, onClick }: { item: NavItem; active: boolean; onClick?: () => void }) {
   const Icon = item.icon;
   return (
@@ -166,14 +169,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper/95 pb-[max(env(safe-area-inset-bottom),0.5rem)] backdrop-blur-md lg:hidden"
         aria-label="Primary"
       >
-        <div className="grid grid-cols-5">
-          {NAV.map((item) => {
+        <div className="grid grid-cols-6">
+          {MOBILE_NAV.map((item) => {
             const Icon = item.icon;
             const active = !!isActive(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={active ? 'page' : undefined}
                 className={cn('flex flex-col items-center gap-1 py-2 text-[10.5px]', active ? 'text-ink' : 'text-ink-mute')}
               >
                 <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.2 : 1.8} />
