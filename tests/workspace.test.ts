@@ -328,6 +328,21 @@ describe('workspace persistence', () => {
     expect(await getDb()!.projects.count()).toBe(existingProjects);
   });
 
+  it('rejects a backup with mismatched change-order totals without changing local records', async () => {
+    await seedDemoWorkspace();
+    const before = await exportWorkspace();
+    const damaged = JSON.parse(JSON.stringify(before)) as typeof before;
+    damaged.changeOrders[0].total += 1;
+
+    expect(validateWorkspace(damaged)).toBe(false);
+    await expect(importWorkspace(damaged)).rejects.toThrow(/existing workspace was not changed/i);
+    const after = await exportWorkspace();
+    expect(after.projects).toEqual(before.projects);
+    expect(after.asks).toEqual(before.asks);
+    expect(after.changeOrders).toEqual(before.changeOrders);
+    expect(after.activity).toEqual(before.activity);
+  });
+
   it('produces a shareable link that fits in a URL for a real change order', async () => {
     await seedDemoWorkspace();
     const db = getDb()!;
