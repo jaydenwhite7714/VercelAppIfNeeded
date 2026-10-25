@@ -220,7 +220,8 @@ const APP_SCHEMA = {
 };
 
 export default function LandingPage() {
-  const clause = LIBRARY.find((item) => item.id === 'free-work-boundary');
+  const clauseIndex = LIBRARY.findIndex((item) => item.id === 'free-work-boundary');
+  const clause = LIBRARY[clauseIndex];
 
   return (
     <div className="relative min-h-dvh">
@@ -511,8 +512,8 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="relative rounded-2xl border border-line bg-card p-6 shadow-[var(--shadow-paper)]">
-            <span className="absolute -top-3 left-6 rounded-full border border-line bg-paper px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-ink-mute">
-              Clause 03 · Change requests
+            <span className="absolute -top-3 left-6 max-w-[calc(100%-1.75rem)] truncate rounded-full border border-line bg-paper px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-ink-mute">
+              Clause {String(clauseIndex + 1).padStart(2, '0')} · {clause?.title.replace(/ clause$/, '')}
             </span>
             <p className="whitespace-pre-line text-[12.5px] leading-[1.75] text-ink-soft">
               {clause?.body.slice(0, 640)}…
