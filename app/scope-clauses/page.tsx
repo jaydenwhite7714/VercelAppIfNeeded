@@ -104,7 +104,7 @@ export default function ScopeClausesPage() {
                 <p className="mt-2 text-[12.5px] leading-relaxed text-ink-mute">
                   <span className="font-medium text-ink-soft">Use it when:</span> {clause.when}
                 </p>
-                <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-line bg-paper/50 p-3.5 font-[var(--font-sans)] text-[12.5px] leading-[1.75] text-ink-soft sm:p-4">
+                <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-line bg-paper/50 p-3.5 font-sans text-[12.5px] leading-[1.75] text-ink-soft sm:p-4">
                   {clause.body}
                 </pre>
                 <div className="mt-2.5 flex flex-wrap gap-1.5">

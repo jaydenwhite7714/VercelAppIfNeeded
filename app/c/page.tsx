@@ -110,7 +110,7 @@ export default function ClientChangeOrderPage() {
                       {order!.fromEmail ? ` (${order!.fromEmail})` : ''} so it is on record. A timestamped receipt protects
                       both sides.
                     </p>
-                    <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-card p-3 font-[var(--font-mono)] text-[10.5px] leading-relaxed text-ink-soft">
+                    <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-card p-3 font-mono text-[10.5px] leading-relaxed text-ink-soft">
                       {receipt}
                     </pre>
                     <div className="mt-3 flex flex-wrap gap-2">

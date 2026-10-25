@@ -124,7 +124,7 @@ export default function SowTemplatePage() {
               <span className="mono-label">Copy-ready scope of work</span>
               <CopyButton value={SOW} label="Copy template" variant="primary" />
             </div>
-            <pre className="max-h-[720px] overflow-y-auto whitespace-pre-wrap p-4 font-[var(--font-mono)] text-[10.5px] leading-[1.85] text-ink-soft sm:p-5">
+            <pre className="max-h-[720px] overflow-y-auto whitespace-pre-wrap p-4 font-mono text-[10.5px] leading-[1.85] text-ink-soft sm:p-5">
               {SOW}
             </pre>
           </div>

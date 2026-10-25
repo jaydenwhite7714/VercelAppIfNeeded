@@ -9,7 +9,7 @@ export function ChangeOrderDocument({ order, className }: { order: SharedChangeO
       <div className="border-b border-line px-5 py-4 sm:px-7 sm:py-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="font-[var(--font-display)] text-[16px] font-semibold tracking-[-0.02em]">
+            <p className="font-display text-[16px] font-semibold tracking-[-0.02em]">
               {order.fromBusiness || order.fromName}
             </p>
             {order.fromEmail ? <p className="mt-0.5 text-[11.5px] text-ink-mute">{order.fromEmail}</p> : null}

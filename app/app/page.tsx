@@ -65,10 +65,10 @@ function Stat({
       <p
         className={
           tone === 'accent'
-            ? 'mt-3 font-[var(--font-display)] text-[30px] leading-none tracking-[-0.035em] tnum text-accent-deep sm:text-[34px]'
+            ? 'mt-3 font-display text-[30px] leading-none tracking-[-0.035em] tnum text-accent-deep sm:text-[34px]'
             : tone === 'sage'
-              ? 'mt-3 font-[var(--font-display)] text-[30px] leading-none tracking-[-0.035em] tnum text-sage sm:text-[34px]'
-              : 'mt-3 font-[var(--font-display)] text-[30px] leading-none tracking-[-0.035em] tnum sm:text-[34px]'
+              ? 'mt-3 font-display text-[30px] leading-none tracking-[-0.035em] tnum text-sage sm:text-[34px]'
+              : 'mt-3 font-display text-[30px] leading-none tracking-[-0.035em] tnum sm:text-[34px]'
         }
       >
         {value}

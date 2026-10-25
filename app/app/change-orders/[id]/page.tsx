@@ -209,7 +209,7 @@ export default function ChangeOrderDetailPage() {
             {share ? (
               <>
                 <div className="mt-3 rounded-lg border border-line bg-paper/60 p-2.5">
-                  <p className="break-all font-[var(--font-mono)] text-[10px] leading-relaxed text-ink-mute">{share.url}</p>
+                  <p className="break-all font-mono text-[10px] leading-relaxed text-ink-mute">{share.url}</p>
                 </div>
                 {share.tooLong ? (
                   <p className="mt-2 rounded-lg border border-gold/30 bg-gold-soft px-2.5 py-2 text-[11px] leading-relaxed text-gold">
@@ -530,7 +530,7 @@ export default function ChangeOrderDetailPage() {
               setReceiptText(event.target.value);
               setReceiptError(null);
             }}
-            className="min-h-44 font-[var(--font-mono)] text-[11px] leading-relaxed"
+            className="min-h-44 font-mono text-[11px] leading-relaxed"
             placeholder={'CHANGE ORDER APPROVAL\nChange order: CO-001 — Add a pricing page\nApproved by: Maya Chen\nApproved at: ...'}
           />
         </Field>

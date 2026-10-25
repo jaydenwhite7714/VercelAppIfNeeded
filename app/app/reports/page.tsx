@@ -188,7 +188,7 @@ export default function ReportsPage() {
                 <div className="grid gap-4 px-4 py-5 sm:grid-cols-3 sm:px-5">
                   <div>
                     <p className="mono-label">Absorbed</p>
-                    <p className="mt-1 font-[var(--font-display)] text-[clamp(1.9rem,4vw,2.5rem)] leading-none tracking-[-0.04em] tnum text-accent-deep">
+                    <p className="mt-1 font-display text-[clamp(1.9rem,4vw,2.5rem)] leading-none tracking-[-0.04em] tnum text-accent-deep">
                       {money(data.absorbedValue, settings.currency)}
                     </p>
                     <p className="mt-1.5 text-[11.5px] text-ink-mute">
@@ -197,7 +197,7 @@ export default function ReportsPage() {
                   </div>
                   <div className="sm:border-l sm:border-line sm:pl-4">
                     <p className="mono-label">Recovered</p>
-                    <p className="mt-1 font-[var(--font-display)] text-[clamp(1.9rem,4vw,2.5rem)] leading-none tracking-[-0.04em] tnum text-sage">
+                    <p className="mt-1 font-display text-[clamp(1.9rem,4vw,2.5rem)] leading-none tracking-[-0.04em] tnum text-sage">
                       {money(data.billedValue, settings.currency)}
                     </p>
                     <p className="mt-1.5 text-[11.5px] text-ink-mute">
@@ -206,7 +206,7 @@ export default function ReportsPage() {
                   </div>
                   <div className="sm:border-l sm:border-line sm:pl-4">
                     <p className="mono-label">Decisions</p>
-                    <p className="mt-1 font-[var(--font-display)] text-[clamp(1.9rem,4vw,2.5rem)] leading-none tracking-[-0.04em] tnum">
+                    <p className="mt-1 font-display text-[clamp(1.9rem,4vw,2.5rem)] leading-none tracking-[-0.04em] tnum">
                       {data.absorbedAsks.length + data.approvedOrders.length}
                     </p>
                     <p className="mt-1.5 text-[11.5px] text-ink-mute">logged this month</p>
@@ -320,7 +320,7 @@ export default function ReportsPage() {
                 </div>
                 <div className="mt-8">
                   <p className="mono-label text-paper/50">Unbilled client work</p>
-                  <p className="mt-2 font-[var(--font-display)] text-[clamp(2.6rem,7vw,3.6rem)] leading-none tracking-[-0.045em] tnum">
+                  <p className="mt-2 font-display text-[clamp(2.6rem,7vw,3.6rem)] leading-none tracking-[-0.045em] tnum">
                     {money(data.absorbedValue, settings.currency)}
                   </p>
                   <p className="mt-2 text-[11.5px] text-paper/60">

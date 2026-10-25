@@ -319,7 +319,7 @@ export default function ProjectDetailPage() {
       >
         <div className="space-y-4">
           <div className="rounded-lg border border-line bg-paper/60 p-2.5">
-            <p className="break-all font-[var(--font-mono)] text-[10px] leading-relaxed text-ink-mute">{scopeLink}</p>
+            <p className="break-all font-mono text-[10px] leading-relaxed text-ink-mute">{scopeLink}</p>
           </div>
           <Field label="Add a note for the client" optional hint="Shown at the bottom of the shared page.">
             <Textarea
