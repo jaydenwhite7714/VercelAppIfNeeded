@@ -16,6 +16,7 @@ import {
 import { SiteNav } from '@/components/marketing/SiteNav';
 import { SiteFooter } from '@/components/marketing/SiteFooter';
 import { ScopeCheckDemo } from '@/components/ScopeCheckDemo';
+import { UnbilledReceipt } from '@/components/marketing/UnbilledReceipt';
 import { Button, SectionLabel } from '@/components/ui';
 import { Underline } from '@/components/brand';
 import { LIBRARY } from '@/lib/scripts';
@@ -341,6 +342,43 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ------------------------------------------------------------- the receipt */}
+      <section className="border-y border-line bg-paper-deep/25">
+        <div className="mx-auto grid max-w-6xl gap-10 px-5 py-16 sm:px-8 sm:py-20 lg:grid-cols-[1fr_0.8fr] lg:items-center">
+          <div>
+            <SectionLabel>The artefact</SectionLabel>
+            <h2 className="mt-5 max-w-[22ch] text-[clamp(1.9rem,4.2vw,2.9rem)] font-semibold leading-[1.02] tracking-[-0.032em]">
+              A receipt for the work you were never paid for.
+            </h2>
+            <p className="mt-4 max-w-[50ch] text-[14.5px] leading-relaxed text-ink-soft">
+              Freelancers talk about “loads of little extras”. That is not a number, and it is not a boundary. Unbilled
+              turns the goodwill into line items — a page, a revision round, an export, a “quick” sequence — so you can see
+              exactly what you gave away, month by month.
+            </p>
+            <ul className="mt-5 space-y-2.5">
+              {[
+                ['Every request has a price.', 'Hours and a fee, calculated from your own rate.'],
+                ['Every price has a decision.', 'Absorbed, billed, declined or held — never “I forgot”.'],
+                ['Every decision has a sentence.', 'The email you would have spent twenty minutes rewriting.'],
+              ].map(([title, body]) => (
+                <li key={title} className="flex gap-2.5">
+                  <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-accent" />
+                  <p className="text-[13px] leading-relaxed text-ink-soft">
+                    <span className="font-medium text-ink">{title}</span> {body}
+                  </p>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-mute">
+              Illustrative example — your numbers come from your ledger
+            </p>
+          </div>
+          <div className="lg:pl-6">
+            <UnbilledReceipt className="rotate-[-1.4deg]" />
+          </div>
+        </div>
+      </section>
+
       {/* ----------------------------------------------------------- how it works */}
       <section id="how" className="scroll-mt-20 border-y border-line bg-card/50">
         <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-24">
@@ -474,7 +512,7 @@ export default function LandingPage() {
           </div>
           <div className="relative rounded-2xl border border-line bg-card p-6 shadow-[var(--shadow-paper)]">
             <span className="absolute -top-3 left-6 rounded-full border border-line bg-paper px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-ink-mute">
-              Clause 06 · Scope & changes
+              Clause 03 · Change requests
             </span>
             <p className="whitespace-pre-line text-[12.5px] leading-[1.75] text-ink-soft">
               {clause?.body.slice(0, 640)}…

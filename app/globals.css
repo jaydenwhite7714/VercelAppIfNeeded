@@ -133,6 +133,24 @@
     -webkit-mask-composite: source-in;
   }
 
+  .receipt-teeth {
+    --tooth: 11px;
+    height: var(--tooth);
+    background: conic-gradient(from -45deg at bottom, var(--color-card) 90deg, transparent 0) 0 0 / var(--tooth) 100% repeat-x;
+  }
+
+  .receipt-shell {
+    background-color: #fffdf8;
+    background-image: linear-gradient(180deg, #fffdf8, #fdfaf3);
+  }
+
+  .leader {
+    flex: 1;
+    border-bottom: 1px dotted var(--color-line-strong);
+    margin: 0 6px 4px;
+    min-width: 12px;
+  }
+
   .link-underline {
     background-image: linear-gradient(currentColor, currentColor);
     background-size: 100% 1px;
