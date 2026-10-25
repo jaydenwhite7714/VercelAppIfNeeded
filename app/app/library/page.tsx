@@ -69,7 +69,7 @@ export default function LibraryPage() {
                       </span>
                     ))}
                   </div>
-                  <pre className="whitespace-pre-wrap font-[var(--font-sans)] text-[12.5px] leading-[1.75] text-ink-soft">{script.body}</pre>
+                  <pre className="whitespace-pre-wrap font-sans text-[12.5px] leading-[1.75] text-ink-soft">{script.body}</pre>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <CopyButton value={script.body} label="Copy script" variant="primary" />
                     <Link href="/app/requests">

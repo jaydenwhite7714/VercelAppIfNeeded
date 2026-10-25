@@ -25,7 +25,7 @@ export function Wordmark({ className, tone = 'ink' }: { className?: string; tone
   return (
     <span className={cn('flex items-center gap-2', className)}>
       <LogoMark tone={tone} />
-      <span className={cn('font-[var(--font-display)] text-[19px] font-semibold tracking-[-0.03em]', tone === 'ink' ? 'text-ink' : 'text-paper')}>
+      <span className={cn('font-display text-[19px] font-semibold tracking-[-0.03em]', tone === 'ink' ? 'text-ink' : 'text-paper')}>
         unbilled<span className="text-accent">.</span>
       </span>
     </span>

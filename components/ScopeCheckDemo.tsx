@@ -135,7 +135,7 @@ export function ScopeCheckDemo({ compact = false }: { compact?: boolean }) {
               <div className="flex items-end justify-between gap-3">
                 <div>
                   <p className="mono-label">Outside your scope</p>
-                  <p className="mt-1 font-[var(--font-display)] text-[34px] leading-none tracking-[-0.03em] tnum">
+                  <p className="mt-1 font-display text-[34px] leading-none tracking-[-0.03em] tnum">
                     {money(result.total, 'USD')}
                   </p>
                 </div>

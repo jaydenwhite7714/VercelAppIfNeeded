@@ -128,7 +128,7 @@ const STEPS = [
         <div className="flex items-end justify-between">
           <div>
             <p className="mono-label">absorbed this month</p>
-            <p className="mt-1 font-[var(--font-display)] text-2xl leading-none tnum">$1,240</p>
+            <p className="mt-1 font-display text-2xl leading-none tnum">$1,240</p>
           </div>
           <span className="flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-medium text-accent-deep">
             <TrendingDown className="h-3 w-3" /> 14h unbilled
@@ -331,7 +331,7 @@ export default function LandingPage() {
         <div className="grid gap-8 sm:grid-cols-3 sm:gap-6">
           {STATS.map((stat, index) => (
             <div key={stat.value} className={index > 0 ? 'sm:border-l sm:border-line sm:pl-6' : ''}>
-              <p className="font-[var(--font-display)] text-[clamp(2.4rem,5vw,3.2rem)] leading-none tracking-[-0.04em] tnum">
+              <p className="font-display text-[clamp(2.4rem,5vw,3.2rem)] leading-none tracking-[-0.04em] tnum">
                 {stat.value}
               </p>
               <p className="mt-2.5 max-w-[26ch] text-[13.5px] leading-snug text-ink-soft">{stat.label}</p>
@@ -426,7 +426,7 @@ export default function LandingPage() {
                 leaking
               </span>
             </div>
-            <p className="mt-5 font-[var(--font-display)] text-[42px] leading-none tracking-[-0.04em] tnum">$1,840</p>
+            <p className="mt-5 font-display text-[42px] leading-none tracking-[-0.04em] tnum">$1,840</p>
             <p className="mt-1 text-[11.5px] text-paper/60">absorbed across 7 requests · 19.5 hours</p>
             <div className="mt-4 space-y-2">
               {[

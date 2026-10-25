@@ -49,7 +49,7 @@ export default function PublicLibraryPage() {
                 </div>
                 <CopyButton value={script.body} label="Copy" variant="outline" />
               </div>
-              <pre className="whitespace-pre-wrap px-4 py-4 font-[var(--font-sans)] text-[12.5px] leading-[1.8] text-ink-soft sm:px-5">
+              <pre className="whitespace-pre-wrap px-4 py-4 font-sans text-[12.5px] leading-[1.8] text-ink-soft sm:px-5">
                 {script.body}
               </pre>
             </article>

@@ -136,7 +136,7 @@ export default function ChangeOrderTemplatePage() {
                 <span className="mono-label">Copy-ready template</span>
                 <CopyButton value={TEMPLATE} label="Copy template" variant="primary" />
               </div>
-              <pre className="max-h-[520px] overflow-y-auto whitespace-pre-wrap p-4 font-[var(--font-mono)] text-[11px] leading-[1.8] text-ink-soft">
+              <pre className="max-h-[520px] overflow-y-auto whitespace-pre-wrap p-4 font-mono text-[11px] leading-[1.8] text-ink-soft">
                 {TEMPLATE}
               </pre>
             </div>
@@ -148,7 +148,7 @@ export default function ChangeOrderTemplatePage() {
                   +
                 </span>
               </summary>
-              <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-line bg-paper/50 p-3.5 font-[var(--font-mono)] text-[10.5px] leading-[1.8] text-ink-soft">
+              <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-line bg-paper/50 p-3.5 font-mono text-[10.5px] leading-[1.8] text-ink-soft">
                 {EXAMPLE}
               </pre>
             </details>
