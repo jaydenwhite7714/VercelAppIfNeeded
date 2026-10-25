@@ -274,7 +274,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ push }}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 left-1/2 z-[60] flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 flex-col gap-2 sm:left-auto sm:right-5 sm:translate-x-0">
+      <div role="region" aria-label="Notifications" className="pointer-events-none fixed bottom-4 left-1/2 z-[60] flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 flex-col gap-2 sm:left-auto sm:right-5 sm:translate-x-0">
         <AnimatePresence>
           {toasts.map((toast) => (
             <motion.div
@@ -282,6 +282,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               initial={{ opacity: 0, y: 12, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              role={toast.tone === 'error' ? 'alert' : 'status'}
+              aria-atomic="true"
               className={cn(
                 'pointer-events-auto rounded-xl border px-3.5 py-2.5 text-[13px] shadow-[var(--shadow-lift)]',
                 toast.tone === 'error' ? 'border-accent/30 bg-accent-soft text-accent-deep' : 'border-ink bg-ink text-paper',

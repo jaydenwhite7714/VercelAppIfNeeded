@@ -92,6 +92,13 @@ describe('workspace persistence', () => {
     expect((await getSettings())?.hourlyRate).toBe(95);
   });
 
+  it('preserves independent profile edits made concurrently', async () => {
+    await Promise.all([saveSettings({ name: 'Sam Rivera' }), saveSettings({ businessName: 'Rivera Studio' })]);
+    const settings = (await getSettings())!;
+    expect(settings.name).toBe('Sam Rivera');
+    expect(settings.businessName).toBe('Rivera Studio');
+  });
+
   it('logs settings as a single record', async () => {
     await saveSettings({ name: 'Sam R.' });
     const settings = await getSettings();
@@ -168,6 +175,26 @@ describe('workspace persistence', () => {
     expect(secondOrder.number).toBe('CO-002');
   });
 
+  it('edits a draft with consistent line-item math and rejects unsafe or inconsistent changes', async () => {
+    const settings = await freshWorkspace();
+    const project = await createProject({ name: 'Edit test', clientName: 'Client', rate: 95, startDate: '2026-10-01', revisionRounds: 1, scope: [] });
+    const ask = await saveAsk({ projectId: project.id, title: 'Add a section', sourceText: 'Add a section', verdict: 'extra', confidence: 0.8, reasons: [], hours: 2, value: 190, rush: false });
+    const { changeOrder } = await decideAsk(ask.id, 'bill', settings);
+    const order = changeOrder!;
+    const items = [{ ...order.items[0], description: 'Add a new pricing section', hours: 3, rate: 95, amount: 285 }];
+
+    await updateChangeOrder(order.id, { title: 'Pricing section', items, total: 285, validUntil: '2026-11-15' });
+    expect(await getDb()!.changeOrders.get(order.id)).toMatchObject({ title: 'Pricing section', total: 285, validUntil: '2026-11-15', items });
+    await expect(updateChangeOrder(order.id, { items, total: 284 })).rejects.toThrow(/total must equal/i);
+    await expect(updateChangeOrder(order.id, { status: 'approved' })).rejects.toThrow(/Only the draft description/i);
+    await expect(updateChangeOrder(order.id, { validUntil: '2026-99-99' })).rejects.toThrow(/valid.*expiry date/i);
+    expect((await getDb()!.changeOrders.get(order.id))?.total).toBe(285);
+
+    await markChangeOrderSent(order.id);
+    await expect(updateChangeOrder(order.id, { title: 'Changed after sending' })).rejects.toThrow(/Only draft/i);
+    expect((await getDb()!.changeOrders.get(order.id))?.title).toBe('Pricing section');
+  });
+
   it('keeps a declined change order and its linked request in sync', async () => {
     const settings = await freshWorkspace();
     const project = await createProject({ name: 'Decline test', clientName: 'Client', rate: 100, startDate: '2026-10-01', revisionRounds: 1, scope: [] });
@@ -233,6 +260,44 @@ describe('workspace persistence', () => {
     expect(metrics.leakRate).toBe(1);
   });
 
+  it('reports only approved billed totals, and separates them from absorbed and pending value', async () => {
+    const settings = await freshWorkspace();
+    const project = await createProject({ name: 'Report math', clientName: 'Client', rate: 95, startDate: '2026-10-01', revisionRounds: 1, scope: [] });
+    const absorbed = await saveAsk({ projectId: project.id, title: 'Small included tweak', sourceText: 'Move the logo', verdict: 'covered', confidence: 0.9, reasons: [], hours: 1, value: 120, rush: false });
+    await decideAsk(absorbed.id, 'absorb', settings);
+
+    const approvedAsk = await saveAsk({ projectId: project.id, title: 'New page', sourceText: 'Add a new page', verdict: 'extra', confidence: 0.9, reasons: [], hours: 3, value: 285, rush: false });
+    const approvedOrder = (await decideAsk(approvedAsk.id, 'bill', settings)).changeOrder!;
+    await markChangeOrderApproved(approvedOrder.id, 'Client', 'receipt');
+
+    const draftAsk = await saveAsk({ projectId: project.id, title: 'New section', sourceText: 'Add a section', verdict: 'extra', confidence: 0.8, reasons: [], hours: 2, value: 190, rush: false });
+    await decideAsk(draftAsk.id, 'bill', settings);
+    await saveAsk({ projectId: project.id, title: 'Open request', sourceText: 'Please review this', verdict: 'gray', confidence: 0.5, reasons: [], hours: 1, value: 90, rush: false });
+
+    const db = getDb()!;
+    const metrics = computeMetrics([project], await db.asks.toArray(), await db.changeOrders.toArray());
+    expect(metrics.absorbedAllTime).toBe(120);
+    expect(metrics.billedAllTime).toBe(285);
+    expect(metrics.pendingValue).toBe(90);
+    expect(metrics.openCount).toBe(1);
+    expect(metrics.byProject[0]).toMatchObject({ absorbed: 120, billed: 285, open: 1 });
+  });
+
+  it('adds the sample workspace without replacing existing user records and avoids duplicating it', async () => {
+    const project = await createProject({ name: 'My real project', clientName: 'Client', rate: 120, startDate: '2026-10-01', revisionRounds: 1, scope: [] });
+    const ask = await saveAsk({ projectId: project.id, title: 'My real request', sourceText: 'Please update the brand', verdict: 'covered', confidence: 0.8, reasons: [], hours: 1, value: 120, rush: false });
+
+    await seedDemoWorkspace();
+    const afterFirstLoad = await exportWorkspace();
+    expect(afterFirstLoad.projects.some((entry) => entry.id === project.id)).toBe(true);
+    expect(afterFirstLoad.asks.some((entry) => entry.id === ask.id)).toBe(true);
+    const countAfterFirstLoad = afterFirstLoad.projects.length;
+
+    await seedDemoWorkspace();
+    expect((await getDb()!.projects.count())).toBe(countAfterFirstLoad);
+    expect((await getDb()!.asks.get(ask.id))?.title).toBe('My real request');
+  });
+
   it('exports and restores a workspace as JSON', async () => {
     await seedDemoWorkspace();
     const dumped = await exportWorkspace();
@@ -243,8 +308,12 @@ describe('workspace persistence', () => {
     expect(await getDb()!.projects.count()).toBe(0);
 
     await importWorkspace(JSON.parse(JSON.stringify(dumped)));
-    expect(await getDb()!.projects.count()).toBe(dumped.projects.length);
-    expect(await getDb()!.asks.count()).toBe(dumped.asks.length);
+    const restored = await exportWorkspace();
+    expect(restored.settings).toEqual(dumped.settings);
+    expect(restored.projects).toEqual(dumped.projects);
+    expect(restored.asks).toEqual(dumped.asks);
+    expect(restored.changeOrders).toEqual(dumped.changeOrders);
+    expect(restored.activity).toEqual(dumped.activity);
   });
 
   it('rejects malformed backups without clearing the existing workspace', async () => {

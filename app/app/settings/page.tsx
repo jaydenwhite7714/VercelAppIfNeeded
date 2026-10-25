@@ -6,7 +6,7 @@ import { Download, HardDrive, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { PageHeader } from '@/components/app/AppShell';
 import { Button, Card, Field, Input, Modal, SectionLabel, Select, Textarea, useToast } from '@/components/ui';
 import { CURRENCIES, type Currency, type Tone } from '@/lib/types';
-import { DEFAULT_TERMS, exportWorkspace, importWorkspace, resetWorkspace, saveSettings, seedDemoWorkspace, validateWorkspace } from '@/lib/db';
+import { DEFAULT_TERMS, exportWorkspace, importWorkspace, resetWorkspace, saveSettings, seedDemoWorkspace, validateWorkspace, type WorkspaceExport } from '@/lib/db';
 import { useAsks, useChangeOrders, useProjects, useReadySettings } from '@/lib/hooks';
 import { TONE_OPTIONS } from '@/lib/templates';
 import { cn } from '@/lib/cn';
@@ -32,6 +32,7 @@ export default function SettingsPage() {
   const [terms, setTerms] = useState(DEFAULT_TERMS);
   const [saving, setSaving] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [pendingImport, setPendingImport] = useState<WorkspaceExport | null>(null);
 
   useEffect(() => {
     if (!settings) return;
@@ -73,29 +74,43 @@ export default function SettingsPage() {
   }
 
   async function exportData() {
-    const data = await exportWorkspace();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `unbilled-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-    push('Backup downloaded.');
+    try {
+      const data = await exportWorkspace();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `unbilled-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      push('Backup downloaded.');
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not create a backup.', 'error');
+    }
   }
 
   async function importData(file: File) {
     try {
-      const parsed = JSON.parse(await file.text());
+      const parsed: unknown = JSON.parse(await file.text());
       if (!validateWorkspace(parsed)) {
-        push('That file is not an Unbilled backup.', 'error');
+        push('That file is not an Unbilled backup. Your current data was not changed.', 'error');
         return;
       }
-      await importWorkspace(parsed);
+      setPendingImport(parsed);
+    } catch {
+      push('Could not read that file. Your current data was not changed.', 'error');
+    }
+  }
+
+  async function confirmImport() {
+    if (!pendingImport) return;
+    try {
+      await importWorkspace(pendingImport);
+      setPendingImport(null);
       push('Backup restored.');
       router.refresh();
-    } catch {
-      push('Could not read that file.', 'error');
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not restore that backup. Your current data was not changed.', 'error');
     }
   }
 
@@ -247,7 +262,7 @@ export default function SettingsPage() {
             <div className="mt-4 border-t border-line pt-3">
               <p className="mono-label">sample workspace</p>
               <p className="mt-1 text-[11.5px] leading-relaxed text-ink-mute">
-                Load a worked example — one client, one scope, and a month of decisions. It replaces your current ledger.
+                Add a worked example — one client, one scope, and sample decisions. Existing data is kept; if the example is already present, it will not be added again.
               </p>
               <Button
                 size="sm"
@@ -296,6 +311,27 @@ export default function SettingsPage() {
           </Card>
         </div>
       </div>
+
+      <Modal
+        open={pendingImport !== null}
+        onClose={() => setPendingImport(null)}
+        title="Replace this browser’s workspace?"
+        description="Importing this backup replaces all projects, requests, change orders, settings, and activity currently stored in this browser."
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setPendingImport(null)}>
+              Cancel
+            </Button>
+            <Button variant="accent" onClick={() => void confirmImport()}>
+              Replace and restore backup
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-[13px] leading-relaxed text-ink-soft">
+          The selected backup contains {pendingImport?.projects.length ?? 0} projects, {pendingImport?.asks.length ?? 0} requests, and {pendingImport?.changeOrders.length ?? 0} change orders. Cancel to keep your current data, or confirm to replace it.
+        </p>
+      </Modal>
 
       <Modal
         open={resetOpen}

@@ -53,6 +53,7 @@ export default function ChangeOrderDetailPage() {
   const [editTimeline, setEditTimeline] = useState('');
   const [editValidUntil, setEditValidUntil] = useState('');
   const [editItems, setEditItems] = useState<ChangeOrderItem[]>([]);
+  const [editError, setEditError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -127,18 +128,25 @@ export default function ChangeOrderDetailPage() {
   async function saveEdit() {
     if (!order) return;
     setSaving(true);
-    const total = editItems.reduce((sum, item) => sum + Math.round(item.hours * item.rate), 0);
-    await updateChangeOrder(order.id, {
-      title: editTitle,
-      summary: editSummary,
-      timelineImpact: editTimeline,
-      validUntil: editValidUntil || undefined,
-      items: editItems.map((item) => ({ ...item, amount: Math.round(item.hours * item.rate) })),
-      total,
-    });
-    setSaving(false);
-    setEditOpen(false);
-    push('Change order updated. The share link is refreshed.');
+    setEditError(null);
+    try {
+      const items = editItems.map((item) => ({ ...item, amount: Math.round(item.hours * item.rate) }));
+      const total = items.reduce((sum, item) => sum + item.amount, 0);
+      await updateChangeOrder(order.id, {
+        title: editTitle,
+        summary: editSummary,
+        timelineImpact: editTimeline,
+        validUntil: editValidUntil || undefined,
+        items,
+        total,
+      });
+      setEditOpen(false);
+      push('Change order updated. The share link is refreshed.');
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : 'Could not save this change order.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -161,7 +169,7 @@ export default function ChangeOrderDetailPage() {
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           {order.status === 'draft' ? (
-            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+            <Button variant="outline" size="sm" onClick={() => { setEditError(null); setEditOpen(true); }}>
               <Pencil className="h-3.5 w-3.5" /> Edit draft
             </Button>
           ) : null}
@@ -406,6 +414,7 @@ export default function ChangeOrderDetailPage() {
         }
       >
         <div className="space-y-4">
+          {editError ? <p role="alert" className="rounded-lg border border-accent/25 bg-accent-soft px-3 py-2 text-[12px] leading-relaxed text-accent-deep">{editError}</p> : null}
           <Field label="Title">
             <Input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} />
           </Field>
@@ -474,7 +483,7 @@ export default function ChangeOrderDetailPage() {
                       type="button"
                       onClick={() => setEditItems((items) => items.filter((entry) => entry.id !== item.id))}
                       className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-mute hover:bg-accent-soft hover:text-accent-deep"
-                      aria-label="Remove item"
+                      aria-label={`Remove item ${index + 1}`}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>

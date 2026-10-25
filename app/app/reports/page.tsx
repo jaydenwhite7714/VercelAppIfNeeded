@@ -9,6 +9,7 @@ import { useAsks, useChangeOrders, useProjects, useReadySettings } from '@/lib/h
 import { hoursLabel, money, monthKey } from '@/lib/format';
 import { Wordmark } from '@/components/brand';
 import { cn } from '@/lib/cn';
+import { loggedDecisionCount } from '@/lib/reporting';
 import { toPng } from 'html-to-image';
 
 function monthsBack(count: number) {
@@ -87,6 +88,7 @@ export default function ReportsPage() {
       biggestProject,
       allTimeAbsorbedValue: allTimeAbsorbed.reduce((sum, ask) => sum + ask.value, 0),
       allTimeBilledValue: (orders ?? []).filter((order) => order.status === 'approved').reduce((sum, order) => sum + order.total, 0),
+      decisions: loggedDecisionCount(asks ?? [], orders ?? [], selected),
     };
   }, [asks, orders, projects, selected, months]);
 
@@ -207,7 +209,7 @@ export default function ReportsPage() {
                   <div className="sm:border-l sm:border-line sm:pl-4">
                     <p className="mono-label">Decisions</p>
                     <p className="mt-1 font-display text-[clamp(1.9rem,4vw,2.5rem)] leading-none tracking-[-0.04em] tnum">
-                      {data.absorbedAsks.length + data.approvedOrders.length}
+                      {data.decisions}
                     </p>
                     <p className="mt-1.5 text-[11.5px] text-ink-mute">logged this month</p>
                   </div>

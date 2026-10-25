@@ -323,10 +323,45 @@ export async function markChangeOrderDeclined(id: string): Promise<void> {
 export async function updateChangeOrder(id: string, patch: Partial<ChangeOrder>): Promise<void> {
   const db = getDb();
   if (!db) return;
-  const order = await db.changeOrders.get(id);
-  if (!order) throw new Error('Change order not found.');
-  if (order.status !== 'draft') throw new Error('Only draft change orders can be edited. Sent or approved records are kept unchanged.');
-  await db.changeOrders.update(id, { ...patch, updatedAt: Date.now() });
+
+  const editableFields = ['title', 'summary', 'timelineImpact', 'validUntil', 'items', 'total'] as const;
+  if (Object.keys(patch).some((key) => !editableFields.includes(key as (typeof editableFields)[number]))) {
+    throw new Error('Only the draft description, timeline, expiry, and priced line items can be edited.');
+  }
+
+  await db.transaction('rw', db.changeOrders, async () => {
+    const order = await db.changeOrders.get(id);
+    if (!order) throw new Error('Change order not found.');
+    if (order.status !== 'draft') throw new Error('Only draft change orders can be edited. Sent or approved records are kept unchanged.');
+
+    if (patch.title !== undefined && !patch.title.trim()) throw new Error('A change order needs a title.');
+    if (patch.summary !== undefined && !patch.summary.trim()) throw new Error('A change order needs a summary.');
+    if (patch.timelineImpact !== undefined && !patch.timelineImpact.trim()) throw new Error('A change order needs a timeline note.');
+    if (patch.validUntil !== undefined) {
+      const expiry = new Date(`${patch.validUntil}T00:00:00.000Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(patch.validUntil) || Number.isNaN(expiry.getTime()) || expiry.toISOString().slice(0, 10) !== patch.validUntil) {
+        throw new Error('Enter a valid change-order expiry date.');
+      }
+    }
+
+    if (patch.items !== undefined || patch.total !== undefined) {
+      const items = patch.items;
+      if (!items?.length) throw new Error('A change order needs at least one line item.');
+      const ids = new Set(items.map((item) => item.id));
+      if (ids.size !== items.length || items.some((item) => !item.id.trim() || !item.description.trim()
+        || !Number.isFinite(item.hours) || item.hours < 0
+        || !Number.isFinite(item.rate) || item.rate < 0
+        || !Number.isFinite(item.amount) || item.amount !== Math.round(item.hours * item.rate))) {
+        throw new Error('Each line item needs a description and valid hours, rate, and calculated amount.');
+      }
+      const calculatedTotal = items.reduce((sum, item) => sum + item.amount, 0);
+      if (!Number.isFinite(calculatedTotal) || patch.total !== calculatedTotal) {
+        throw new Error('The total must equal the sum of the line items. Recheck the hours and rates.');
+      }
+    }
+
+    await db.changeOrders.update(id, { ...patch, updatedAt: Date.now() });
+  });
 }
 
 export async function deleteChangeOrder(id: string): Promise<void> {
