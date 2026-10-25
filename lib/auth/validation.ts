@@ -50,6 +50,12 @@ export function safeNextPath(value: string | null | undefined): string {
 
 export function authErrorMessage(message: string): { status: number; message: string } {
   const lower = message.toLowerCase();
+  if (lower.includes('rate limit') || lower.includes('too many requests')) {
+    return { status: 429, message: 'Too many account requests. Wait a little while and try again.' };
+  }
+  if (lower.includes('smtp') || lower.includes('sending confirmation email') || lower.includes('email provider') || lower.includes('failed to send')) {
+    return { status: 503, message: 'The email provider could not accept this request. No email delivery was confirmed; check Supabase Auth email settings and retry later.' };
+  }
   if (lower.includes('username_normalized') || lower.includes('profiles_username') || lower.includes('username already taken')) {
     return { status: 409, message: 'That username is already taken. Please choose another.' };
   }

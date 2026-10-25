@@ -128,13 +128,18 @@ separate approval.
    NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_PUBLIC_ANON_KEY
    NEXT_PUBLIC_APP_URL=https://YOUR_ACTUAL_APP_ORIGIN
-   SUPABASE_AUTH_SCHEMA_READY=true
-   SUPABASE_EMAIL_DELIVERY_READY=true
+   SUPABASE_AUTH_SCHEMA_READY=false
+   SUPABASE_EMAIL_DELIVERY_READY=false
    ```
 
-   Set each readiness flag only after the migration or email delivery is truly configured and tested. For local development,
-   use `NEXT_PUBLIC_APP_URL=http://localhost:3000`. The public key is intentionally public; **never set or expose a service-role
-   key**. Add Vercel variables yourself only after review; production settings were not changed here.
+   The readiness variables are explicit owner-controlled gates, not automatic database or SMTP health checks. The account
+   status endpoint considers a gate ready only when its value is exactly the string `true`; unset values stay off. With the
+   schema gate off, account routes remain paused. Signup, verification resend, and password reset also remain paused while
+   the email gate is off. Set `SUPABASE_AUTH_SCHEMA_READY=true` only after applying and checking the migration; set
+   `SUPABASE_EMAIL_DELIVERY_READY=true` only after a real test email has arrived and the verification/reset flow has been
+   checked. Do not treat turning a gate on as proof that the provider is working. For local development, use
+   `NEXT_PUBLIC_APP_URL=http://localhost:3000`. The public key is intentionally public; **never set or expose a
+   service-role key**. Add Vercel variables yourself only after review; production settings were not changed here.
 7. Register an account, verify its email, sign in, then use Settings → **Account & private backup** to save/restore a
    snapshot. The first upload leaves local data in place. Restore downloads a JSON copy of the current browser workspace
    before replacing it. Concurrent overwrites are rejected. Sign-out does not delete local IndexedDB data. Account deletion

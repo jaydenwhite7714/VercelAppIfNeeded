@@ -1,15 +1,13 @@
 'use client';
 
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, CheckCircle2, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { Button, Card, Field, Input } from '@/components/ui';
 import { Wordmark } from '@/components/brand';
 import { emailOnlySchema, passwordUpdateSchema, signInSchema, signupSchema, normalizeEmail } from '@/lib/auth/validation';
-
-type AuthMode = 'signup' | 'signin' | 'reset' | 'verify' | 'update-password';
-type Setup = { providerConfigured: boolean; databaseReady: boolean; emailReady: boolean };
+import { getAuthFieldErrors, getAuthSetupBlockers, isAuthSubmitDisabled, type AuthMode, type AuthSetup, type AuthValues } from '@/lib/auth/form-state';
 
 async function sendJson(url: string, payload: unknown): Promise<{ ok: boolean; data: Record<string, unknown> }> {
   try {
@@ -49,21 +47,24 @@ export function AuthFrame({ title, description, children }: { title: string; des
   );
 }
 
-function SetupNotice({ setup, needsEmail }: { setup: Setup | null; needsEmail: boolean }) {
-  if (!setup) return <p role="status" className="mb-4 rounded-lg border border-line bg-paper/60 p-3 text-xs text-ink-mute">Checking account service configuration…</p>;
-  const issue = !setup.providerConfigured
-    ? 'Account services are not configured yet. You can still use Unbilled locally without an account.'
-    : !setup.databaseReady
-      ? 'Account database setup is incomplete. Signup and private cloud backup are paused; local workspaces are unaffected.'
-      : needsEmail && !setup.emailReady
-        ? 'Email delivery is not configured. No verification or recovery message will be requested.'
-        : null;
-  return issue ? <p role="status" className="mb-4 rounded-lg border border-gold/30 bg-gold-soft/50 p-3 text-xs leading-relaxed text-ink-soft">{issue}</p> : null;
+function SetupNotice({ setup, mode, loadFailed }: { setup: AuthSetup | null; mode: AuthMode; loadFailed: boolean }) {
+  if (loadFailed) return <p role="alert" className="mb-4 rounded-lg border border-gold/30 bg-gold-soft/50 p-3 text-xs leading-relaxed text-ink-soft">Account readiness could not be checked. Refresh this page and try again; no account request has been made.</p>;
+  if (!setup) return <p role="status" className="mb-4 rounded-lg border border-line bg-paper/60 p-3 text-xs text-ink-mute">Checking account service readiness…</p>;
+  const blockers = getAuthSetupBlockers(mode, setup);
+  if (!blockers.length) return null;
+  return (
+    <div role="status" aria-live="polite" className="mb-4 rounded-lg border border-gold/30 bg-gold-soft/50 p-3 text-xs leading-relaxed text-ink-soft">
+      <p className="font-medium">Account signup is currently unavailable.</p>
+      <ul className="mt-1 list-inside list-disc space-y-1">{blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
+      <p className="mt-2">Your local workspace remains available. No email will be requested while its readiness gate is off.</p>
+    </div>
+  );
 }
 
 export function AuthForm({ mode }: { mode: AuthMode }) {
   const router = useRouter();
-  const [setup, setSetup] = useState<Setup | null>(null);
+  const [setup, setSetup] = useState<AuthSetup | null>(null);
+  const [setupLoadFailed, setSetupLoadFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -71,13 +72,22 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const submitLock = useRef(false);
+
+  const values: AuthValues = { username, email, password, confirmPassword };
+  const fieldErrors = getAuthFieldErrors(mode, values);
+  const showFieldError = (field: string) => Boolean(touched[field] && fieldErrors[field]);
 
   useEffect(() => {
     let active = true;
     fetch('/api/account/status', { cache: 'no-store' })
-      .then(async (response) => ({ response, data: await response.json() as Setup }))
-      .then(({ data }) => { if (active) setSetup(data); })
-      .catch(() => { if (active) setSetup({ providerConfigured: false, databaseReady: false, emailReady: false }); });
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Account status request failed.');
+        return await response.json() as AuthSetup;
+      })
+      .then((data) => { if (active) setSetup(data); })
+      .catch(() => { if (active) setSetupLoadFailed(true); });
     if (mode === 'signup') {
       const verification = new URLSearchParams(window.location.search).get('verification');
       if (verification === 'invalid') setError('That verification link is invalid, expired, or already used. Request a fresh link.');
@@ -89,11 +99,13 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     return () => { active = false; };
   }, [mode]);
 
-  const needsEmail = mode === 'signup' || mode === 'reset' || mode === 'verify';
-  const setupBlocked = !setup || !setup.providerConfigured || !setup.databaseReady || (needsEmail && !setup.emailReady);
+  const setupBlocked = setupLoadFailed || getAuthSetupBlockers(mode, setup).length > 0;
+  const submitDisabled = isAuthSubmitDisabled(mode, values, setupLoadFailed ? null : setup, busy) || setupLoadFailed;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitLock.current) return;
+    setTouched({ username: true, email: true, password: true, confirmPassword: true });
     setError('');
     setMessage('');
     const input = mode === 'signup'
@@ -104,13 +116,14 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           ? emailOnlySchema.safeParse({ email })
           : passwordUpdateSchema.safeParse({ password, confirmPassword });
     if (!input.success) {
-      setError(input.error.issues[0]?.message ?? 'Check the highlighted fields.');
+      setError('Please correct the highlighted fields before continuing.');
       return;
     }
     if (setupBlocked) {
-      setError('Account setup is not ready. Continue with the local workspace or ask the owner to complete provider setup.');
+      setError('Account setup is not ready. Review the status above; no request was sent.');
       return;
     }
+    submitLock.current = true;
     setBusy(true);
     try {
       let endpoint = '';
@@ -147,6 +160,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       }
       setMessage(typeof result.data.message === 'string' ? result.data.message : 'Request accepted. Check your email if an account is eligible.');
     } finally {
+      submitLock.current = false;
       setBusy(false);
     }
   }
@@ -162,35 +176,40 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
 
   return (
     <AuthFrame title={view.title} description={view.description}>
-      <SetupNotice setup={setup} needsEmail={needsEmail} />
+      <SetupNotice setup={setup} mode={mode} loadFailed={setupLoadFailed} />
       {message ? (
         <div role="status" className="mb-4 flex gap-2 rounded-lg border border-sage/30 bg-sage-soft/60 p-3 text-xs leading-relaxed text-sage">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> <span>{message}</span>
         </div>
       ) : null}
       {error ? <p role="alert" className="mb-4 rounded-lg border border-accent/30 bg-accent-soft/60 p-3 text-xs leading-relaxed text-accent-deep">{error}</p> : null}
-      <form onSubmit={(event) => void submit(event)} className="space-y-4">
+      <form noValidate onSubmit={(event) => void submit(event)} className="space-y-4">
         {mode === 'signup' ? (
-          <Field label="Username" hint="3–24 characters; start with a letter. Letters, numbers, and underscores.">
-            <Input autoComplete="username" autoCapitalize="none" value={username} onChange={(event) => setUsername(event.target.value)} maxLength={24} required />
+          <Field label="Username" hint={showFieldError('username') ? undefined : '3–24 characters; start with a letter. Letters, numbers, and underscores.'} error={showFieldError('username') ? fieldErrors.username : undefined}>
+            <Input autoComplete="username" autoCapitalize="none" value={username} onChange={(event) => setUsername(event.target.value)} onBlur={() => setTouched((previous) => ({ ...previous, username: true }))} aria-invalid={showFieldError('username')} maxLength={24} required />
           </Field>
         ) : null}
         {mode !== 'update-password' ? (
-          <Field label="Email address">
-            <Input type="email" inputMode="email" autoComplete={mode === 'signin' ? 'username' : 'email'} autoCapitalize="none" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} required />
+          <Field label="Email address" error={showFieldError('email') ? fieldErrors.email : undefined}>
+            <Input type="email" inputMode="email" autoComplete={mode === 'signin' ? 'username' : 'email'} autoCapitalize="none" value={email} onChange={(event) => setEmail(event.target.value)} onBlur={() => setTouched((previous) => ({ ...previous, email: true }))} aria-invalid={showFieldError('email')} maxLength={254} required />
           </Field>
         ) : null}
         {mode === 'signup' || mode === 'signin' || mode === 'update-password' ? (
-          <Field label={mode === 'update-password' ? 'New password' : 'Password'} hint={mode !== 'signin' ? 'At least 12 characters.' : undefined}>
-            <Input type="password" autoComplete={mode === 'signin' ? 'current-password' : mode === 'update-password' ? 'new-password' : 'new-password'} value={password} onChange={(event) => setPassword(event.target.value)} maxLength={128} required />
+          <Field label={mode === 'update-password' ? 'New password' : 'Password'} hint={mode !== 'signin' && !showFieldError('password') ? 'At least 12 characters.' : undefined} error={showFieldError('password') ? fieldErrors.password : undefined}>
+            <Input type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={(event) => setPassword(event.target.value)} onBlur={() => setTouched((previous) => ({ ...previous, password: true }))} aria-invalid={showFieldError('password')} maxLength={128} required />
           </Field>
         ) : null}
         {mode === 'signup' || mode === 'update-password' ? (
-          <Field label="Confirm password">
-            <Input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} maxLength={128} required />
+          <Field label="Confirm password" error={showFieldError('confirmPassword') ? fieldErrors.confirmPassword : undefined}>
+            <Input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} onBlur={() => setTouched((previous) => ({ ...previous, confirmPassword: true }))} aria-invalid={showFieldError('confirmPassword')} maxLength={128} required />
           </Field>
         ) : null}
-        <Button type="submit" variant="accent" className="w-full" loading={busy} disabled={setupBlocked}>{view.button}<ArrowRight className="h-4 w-4" /></Button>
+        <Button type="submit" variant="accent" className="w-full" loading={busy} disabled={submitDisabled} aria-busy={busy}>
+          {busy ? 'Submitting…' : view.button}<ArrowRight className="h-4 w-4" />
+        </Button>
+        <p role="status" aria-live="polite" className="-mt-2 text-[11px] leading-relaxed text-ink-mute">
+          {busy ? 'Please wait while the request is processed.' : setupBlocked ? 'The button is disabled until the account setup status above is resolved.' : Object.keys(fieldErrors).length > 0 ? 'Complete the required fields with valid information to enable this button.' : ''}
+        </p>
       </form>
       <div className="mt-5 border-t border-line pt-4 text-center text-xs text-ink-mute">
         {mode === 'signup' ? <>Already have an account? <Link href="/signin" className="font-medium text-ink underline underline-offset-4">Sign in</Link></> : null}

@@ -1,35 +1,20 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { getAccountSetupIssue, getAccountSetupStatus, getSupabaseConfig } from '@/lib/auth/readiness';
+import type { SupabaseEnv } from '@/lib/auth/readiness';
 
-export type SupabaseEnv = { url: string; key: string };
+export type { SupabaseEnv };
 
 export function getSupabaseEnv(): SupabaseEnv | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-  if (!url || !key) return null;
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'https:' && parsed.hostname !== 'localhost') return null;
-  } catch {
-    return null;
-  }
-  return { url, key };
+  return getSupabaseConfig(process.env);
 }
 
 export function accountSetupStatus() {
-  return {
-    providerConfigured: getSupabaseEnv() !== null,
-    databaseReady: process.env.SUPABASE_AUTH_SCHEMA_READY === 'true',
-    emailReady: process.env.SUPABASE_EMAIL_DELIVERY_READY === 'true',
-  };
+  return getAccountSetupStatus(process.env);
 }
 
 export function accountSetupIssue(needsEmail = false): string | null {
-  const status = accountSetupStatus();
-  if (!status.providerConfigured) return 'Account services are not configured yet. You can continue using the local workspace.';
-  if (!status.databaseReady) return 'Account database setup is incomplete. Local-only workspaces remain available.';
-  if (needsEmail && !status.emailReady) return 'Email delivery is not configured yet. No verification email was requested.';
-  return null;
+  return getAccountSetupIssue(accountSetupStatus(), needsEmail);
 }
 
 export function getAppOrigin(requestUrl?: string): string {

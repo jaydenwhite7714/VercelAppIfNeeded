@@ -2,8 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { NextRequest } from 'next/server';
 import { signupSchema, normalizeEmail, normalizeUsername, safeNextPath } from '@/lib/auth/validation';
+import { getAccountSetupIssue, getAccountSetupStatus } from '@/lib/auth/readiness';
+import { getAuthFieldErrors, getAuthSetupBlockers, isAuthSubmitDisabled } from '@/lib/auth/form-state';
 
-const { auth, createSupabaseServerClient, from, rpc } = vi.hoisted(() => ({
+const { accountSetupIssue, auth, createSupabaseServerClient, from, rpc } = vi.hoisted(() => ({
+  accountSetupIssue: vi.fn(),
   auth: {
     signUp: vi.fn(),
     signInWithPassword: vi.fn(),
@@ -20,7 +23,7 @@ const { auth, createSupabaseServerClient, from, rpc } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
-  accountSetupIssue: vi.fn(() => null),
+  accountSetupIssue,
   createSupabaseServerClient,
   getAppOrigin: (requestUrl: string) => new URL(requestUrl).origin,
   getSupabaseEnv: () => ({ url: 'https://test.supabase.co', key: 'public-test-key' }),
@@ -55,6 +58,7 @@ const validSignup = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  accountSetupIssue.mockReturnValue(null);
   from.mockReset();
   rpc.mockReset();
   createSupabaseServerClient.mockReset();
@@ -68,6 +72,48 @@ beforeEach(() => {
   auth.updateUser.mockResolvedValue({ error: null });
   auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1', email_confirmed_at: '2026-10-25T00:00:00Z' } }, error: null });
   auth.signOut.mockResolvedValue({ error: null });
+});
+
+describe('signup readiness and disabled-state behavior', () => {
+  const completeValues = {
+    username: 'StudioOwner_1',
+    email: 'person@example.com',
+    password: 'correct horse battery staple',
+    confirmPassword: 'correct horse battery staple',
+  };
+  const readySetup = { providerConfigured: true, databaseReady: true, emailReady: true };
+
+  it('keeps all readiness gates off when their environment variables are unset', () => {
+    expect(getAccountSetupStatus({ NEXT_PUBLIC_SUPABASE_URL: 'https://qsjjyhkakqvfcptydqnc.supabase.co', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'public-key' }))
+      .toEqual({ providerConfigured: true, databaseReady: false, emailReady: false });
+    const status = getAccountSetupStatus({});
+    expect(status).toEqual({ providerConfigured: false, databaseReady: false, emailReady: false });
+    expect(getAccountSetupIssue(status, true)).toContain('not configured');
+  });
+
+  it('requires literal readiness flags and explains both Preview gates without implying delivery', () => {
+    const setup = getAccountSetupStatus({
+      NEXT_PUBLIC_SUPABASE_URL: 'https://qsjjyhkakqvfcptydqnc.supabase.co',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'public-key',
+      SUPABASE_AUTH_SCHEMA_READY: 'TRUE',
+      SUPABASE_EMAIL_DELIVERY_READY: 'false',
+    });
+    expect(setup.databaseReady).toBe(false);
+    expect(setup.emailReady).toBe(false);
+    expect(getAuthSetupBlockers('signup', setup).join(' ')).toMatch(/SUPABASE_AUTH_SCHEMA_READY/);
+    expect(getAuthSetupBlockers('signup', setup).join(' ')).toMatch(/SUPABASE_EMAIL_DELIVERY_READY/);
+    expect(getAuthSetupBlockers('signup', setup).join(' ')).toMatch(/No signup.*email request will be made|No signup, verification, or recovery email request will be made/);
+  });
+
+  it('disables submit for invalid or incomplete values and enables it only when valid and ready', () => {
+    expect(isAuthSubmitDisabled('signup', { ...completeValues, email: 'bad-address' }, readySetup, false)).toBe(true);
+    expect(getAuthFieldErrors('signup', { ...completeValues, email: 'bad-address' }).email).toBe('Enter a valid email address.');
+    expect(isAuthSubmitDisabled('signup', { ...completeValues, username: '' }, readySetup, false)).toBe(true);
+    expect(getAuthFieldErrors('signup', { ...completeValues, username: '' }).username).toBe('Enter a username.');
+    expect(isAuthSubmitDisabled('signup', completeValues, { ...readySetup, emailReady: false }, false)).toBe(true);
+    expect(isAuthSubmitDisabled('signup', completeValues, readySetup, true)).toBe(true);
+    expect(isAuthSubmitDisabled('signup', completeValues, readySetup, false)).toBe(false);
+  });
 });
 
 describe('account input validation and normalization', () => {
@@ -105,6 +151,15 @@ describe('account input validation and normalization', () => {
 });
 
 describe('provider-backed auth route behavior', () => {
+  it('fails closed before any provider call when readiness is unset', async () => {
+    accountSetupIssue.mockReturnValue('Email delivery is not configured yet. No verification email was requested.');
+    const response = await signup(jsonRequest('/api/auth/signup', validSignup));
+    expect(response.status).toBe(503);
+    expect((await payload(response)).error).toMatch(/No verification email was requested/);
+    expect(rpc).not.toHaveBeenCalled();
+    expect(auth.signUp).not.toHaveBeenCalled();
+  });
+
   it('requests signup with normalized identifiers and configured verification callback', async () => {
     const response = await signup(jsonRequest('/api/auth/signup', validSignup));
     expect(response.status).toBe(200);
@@ -122,6 +177,23 @@ describe('provider-backed auth route behavior', () => {
     expect(weak.status).toBe(400);
     expect(rpc).not.toHaveBeenCalled();
     expect(auth.signUp).not.toHaveBeenCalled();
+  });
+
+  it('maps useful provider validation and email-delivery errors without exposing raw provider details', async () => {
+    auth.signUp.mockResolvedValueOnce({ data: { user: null }, error: { message: 'Error sending confirmation email: SMTP rejected request' } });
+    const deliveryResponse = await signup(jsonRequest('/api/auth/signup', validSignup));
+    expect(deliveryResponse.status).toBe(503);
+    expect((await payload(deliveryResponse)).error).toMatch(/No email delivery was confirmed/);
+
+    auth.signUp.mockResolvedValueOnce({ data: { user: null }, error: { message: 'Password must be at least 12 characters.' } });
+    const passwordResponse = await signup(jsonRequest('/api/auth/signup', validSignup));
+    expect(passwordResponse.status).toBe(400);
+    expect((await payload(passwordResponse)).error).toMatch(/at least 12 characters/i);
+
+    auth.signUp.mockResolvedValueOnce({ data: { user: null }, error: { message: 'upstream internal host and secret detail' } });
+    const genericResponse = await signup(jsonRequest('/api/auth/signup', validSignup));
+    expect(genericResponse.status).toBe(400);
+    expect((await payload(genericResponse)).error).not.toContain('upstream internal host');
   });
 
   it('returns the exact username-conflict message before creating an account when a handle is already taken', async () => {
