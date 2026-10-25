@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     template: '%s · Unbilled',
   },
   description:
-    'Paste a client message. Unbilled finds every request hiding inside it, checks it against your agreed scope, prices it at your rate, and writes the reply. No account, no uploads.',
+    'Paste a client message. Unbilled checks it against your scope locally, prices the work, and writes a reply. No account is required; private cloud backups are optional and manual.',
   keywords: [
     'scope creep',
     'freelance scope',

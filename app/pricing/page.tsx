@@ -24,7 +24,7 @@ export default function PricingPage() {
           <p className="mono-label">Simple pricing · no surprises</p>
           <h1 className="mt-4 font-display text-5xl tracking-tight sm:text-6xl">Useful work tools.<br /><span className="text-accent">Free to use.</span></h1>
           <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-ink-mute">
-            Unbilled is currently free. Use the scope checker and keep your work ledger in this browser, with no account or subscription.
+            Unbilled is currently free. Use the scope checker and local ledger without an account; optional account backups depend on the provider’s free-tier limits. No Unbilled subscription or checkout is offered.
           </p>
         </section>
 

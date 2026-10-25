@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Download, HardDrive, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { PageHeader } from '@/components/app/AppShell';
+import { AccountPanel } from '@/components/account/AccountPanel';
 import { Button, Card, Field, Input, Modal, SectionLabel, Select, Textarea, useToast } from '@/components/ui';
 import { CURRENCIES, type Currency, type Tone } from '@/lib/types';
 import { DEFAULT_TERMS, exportWorkspace, importWorkspace, resetWorkspace, saveSettings, seedDemoWorkspace, validateWorkspace, type WorkspaceExport } from '@/lib/db';
@@ -132,7 +133,7 @@ export default function SettingsPage() {
       <PageHeader
         eyebrow="Settings"
         title="How Unbilled writes and bills for you"
-        description="These defaults power the pricing and the reply drafts. Nothing here is sent anywhere — it is stored in this browser only."
+        description="These defaults power pricing and reply drafts. Workspace data stays in this browser unless you explicitly save or restore an account backup."
         actions={
           <Button onClick={save} loading={saving}>
             Save changes
@@ -235,14 +236,14 @@ export default function SettingsPage() {
         </div>
 
         <div className="space-y-5">
+          <AccountPanel />
           <Card className="p-4 sm:p-5">
             <div className="flex items-center gap-2">
               <HardDrive className="h-4 w-4 text-sage" />
               <SectionLabel className="flex-1">Your data</SectionLabel>
             </div>
             <p className="mt-2.5 text-[12px] leading-relaxed text-ink-mute">
-              Unbilled stores everything in IndexedDB in this browser. There is no account and no server copy. Export a
-              backup before switching devices or clearing site data.
+              Your active workspace is stored in IndexedDB in this browser. If you sign in, you can explicitly save a private account backup or restore it on another device. Local data is never removed automatically; export before clearing site data.
             </p>
             <div className="mt-3 grid grid-cols-3 gap-2">
               {[
@@ -319,8 +320,8 @@ export default function SettingsPage() {
               {[
                 ['Version', '1.0.0'],
                 ['Scope engine', 'Deterministic rules, no model'],
-                ['Storage', 'IndexedDB (local)'],
-                ['Account', 'None required'],
+                ['Storage', 'Local + optional private backup'],
+                ['Account', 'Optional; email verified'],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-center justify-between gap-3">
                   <dt className="text-ink-mute">{label}</dt>

@@ -169,8 +169,8 @@ const FEATURES = [
   },
   {
     icon: Fingerprint,
-    title: 'Private by architecture',
-    body: 'No accounts, no model, no uploads. Your client names and budgets live in your browser. Share links carry the document in the URL fragment, which servers never see.',
+    title: 'Local-first privacy',
+    body: 'No account is required for the ledger. Analysis stays in your browser; an optional verified account can store a private snapshot only when you choose to upload it. Share links still keep their document in the URL fragment.'
   },
 ];
 
@@ -189,7 +189,7 @@ const FAQ = [
   },
   {
     q: 'Where is my data stored?',
-    a: 'In this browser, in IndexedDB. Nothing is uploaded. Export a full JSON backup any time, and import it on another device. Clearing site data deletes your workspace.',
+    a: 'The working ledger stays in this browser’s IndexedDB by default. You can export a JSON backup, or opt into a verified account and manually save a private snapshot to Supabase. Restore downloads a local backup first; this is not automatic sync.',
   },
   {
     q: 'How do clients approve a change order?',
@@ -197,7 +197,7 @@ const FAQ = [
   },
   {
     q: 'What does it cost?',
-    a: 'Free while Unbilled is in beta. No account, no card, no seat pricing. If it saves you one absorbed week, it has already paid for itself.',
+    a: 'The Unbilled app is free during beta. No account is required to use the local workspace, and there is no checkout or subscription. Optional account features depend on the configured provider’s free-tier limits.',
   },
 ];
 
@@ -290,7 +290,7 @@ export default function LandingPage() {
                 <BadgeCheck className="h-3.5 w-3.5 text-sage" /> No sign-up
               </span>
               <span className="flex items-center gap-1.5">
-                <ShieldCheck className="h-3.5 w-3.5 text-sage" /> Nothing uploaded
+                <ShieldCheck className="h-3.5 w-3.5 text-sage" /> Scope check stays local
               </span>
               <span className="flex items-center gap-1.5">
                 <Sparkles className="h-3.5 w-3.5 text-sage" /> Works offline
@@ -545,9 +545,9 @@ export default function LandingPage() {
               Your clients&apos; names, budgets, and arguments do not belong on someone else&apos;s server.
             </h2>
             <p className="mt-3 max-w-[46ch] text-[14px] leading-relaxed text-ink-soft">
-              Unbilled runs entirely in your browser. No account, no cloud database, no model API, no analytics script
-              watching what you paste. That is not a slogan — it is why the app is fast, free, and safe to open next to a
-              client contract.
+              The working ledger and scope analysis run in your browser by default. No account is needed to use them.
+              An optional verified account can hold a private cloud snapshot only when you explicitly save one; there is
+              no automatic upload of pasted client messages.
             </p>
             <ul className="mt-6 space-y-3">
               {[
@@ -569,7 +569,7 @@ export default function LandingPage() {
             <div className="flex items-center justify-between">
               <p className="mono-label">Data flow</p>
               <span className="rounded-full bg-sage-soft px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-sage">
-                zero outbound
+                local by default
               </span>
             </div>
             <div className="mt-6 space-y-3">
@@ -577,7 +577,7 @@ export default function LandingPage() {
                 { label: 'Your browser', sub: 'Scope · requests · change orders · rates', active: true },
                 { label: 'IndexedDB on this device', sub: 'Survives refreshes and offline use', active: true },
                 { label: 'A link you choose to send', sub: 'Document travels in the URL fragment', active: true },
-                { label: 'Our server', sub: 'Never sees a client name, message, or rate', active: false },
+                { label: 'Private account snapshot', sub: 'Optional full workspace backup; user-scoped row security', active: false },
               ].map((row) => (
                 <div
                   key={row.label}

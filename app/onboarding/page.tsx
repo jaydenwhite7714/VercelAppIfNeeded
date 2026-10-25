@@ -105,7 +105,7 @@ export default function OnboardingPage() {
               <div className="animate-rise">
                 <h1 className="text-[30px] leading-tight tracking-[-0.03em]">Let&apos;s set up your ledger.</h1>
                 <p className="mt-2 text-[13.5px] leading-relaxed text-ink-mute">
-                  Three questions. Everything stays in this browser — there is no account to create.
+                  Three questions to start. No account is required; local data stays in this browser unless you opt into a private backup.
                 </p>
                 <div className="mt-7 space-y-4">
                   <Field label="Your name">
