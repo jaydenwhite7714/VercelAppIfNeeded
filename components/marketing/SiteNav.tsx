@@ -12,6 +12,7 @@ const links = [
   { href: '/scope-clauses', label: 'Free clauses' },
   { href: '/templates/change-order', label: 'Change order template' },
   { href: '/privacy', label: 'Privacy' },
+  { href: '/pricing', label: 'Pricing' },
 ];
 
 export function SiteNav({ transparent = false }: { transparent?: boolean }) {
