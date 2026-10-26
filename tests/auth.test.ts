@@ -149,10 +149,13 @@ describe('account input validation and normalization', () => {
     expect(normalizeEmail('Person@Example.com')).toBe(normalizeEmail('person@example.COM'));
   });
 
-  it('does not allow callback redirects to external URLs', () => {
+  it('does not allow callback redirects to external URLs or control-character URL normalization', () => {
     expect(safeNextPath('https://attacker.example')).toBe('/app');
     expect(safeNextPath('//attacker.example')).toBe('/app');
-    expect(safeNextPath('/account/update-password')).toBe('/account/update-password');
+    expect(safeNextPath('/\n//attacker.example')).toBe('/app');
+    expect(safeNextPath('/\r\n//attacker.example')).toBe('/app');
+    expect(safeNextPath('/\t//attacker.example')).toBe('/app');
+    expect(safeNextPath('/account/update-password?from=mail#done')).toBe('/account/update-password?from=mail#done');
   });
 });
 

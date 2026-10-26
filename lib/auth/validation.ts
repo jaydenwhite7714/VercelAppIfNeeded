@@ -44,8 +44,19 @@ export function normalizeUsername(username: string): string {
 }
 
 export function safeNextPath(value: string | null | undefined): string {
-  if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/app';
-  return value;
+  if (!value) return '/app';
+  const hasControlCharacter = Array.from(value).some((character) => {
+    const code = character.charCodeAt(0);
+    return code <= 0x1f || code === 0x7f;
+  });
+  if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\') || hasControlCharacter) return '/app';
+  try {
+    const candidate = new URL(value, 'https://unbilled.invalid');
+    if (candidate.origin !== 'https://unbilled.invalid') return '/app';
+    return `${candidate.pathname}${candidate.search}${candidate.hash}`;
+  } catch {
+    return '/app';
+  }
 }
 
 export function authErrorMessage(message: string): { status: number; message: string } {
