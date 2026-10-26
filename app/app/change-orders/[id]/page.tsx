@@ -215,7 +215,7 @@ export default function ChangeOrderDetailPage() {
           <Card className="p-4">
             <SectionLabel>Send for approval</SectionLabel>
             <p className="mt-2.5 text-[12px] leading-relaxed text-ink-mute">
-              The whole document travels in the link&apos;s fragment — no account, no server, nothing to log in to.
+              The document travels in the URL fragment and is not stored on Unbilled servers. The link is not encrypted or access-controlled: anyone who gets it can read the details, so share it only with the intended client. Their approval or decline stays on their device until they send the receipt back; this page does not notify you automatically.
             </p>
             {share ? (
               <>
@@ -233,7 +233,7 @@ export default function ChangeOrderDetailPage() {
                     onClick={async () => {
                       try {
                         await navigator.clipboard.writeText(share.url);
-                        push('Approval link copied.');
+                        push('Change-order link copied.');
                       } catch {
                         push('Could not copy — select the link manually.', 'error');
                       }

@@ -5,8 +5,8 @@ import { CURRENCIES, type Activity, type Ask, type AskStatus, type ChangeOrder, 
 import { draftFor, type Decision } from './scripts';
 import { addBusinessDays } from './format';
 import { DEMO_SCOPE } from './demo';
-import { validateWorkspace, type WorkspaceExport } from './workspace-schema';
-export { validateWorkspace, type WorkspaceExport } from './workspace-schema';
+import { parseWorkspace, type WorkspaceExport } from './workspace-schema';
+export { MAX_WORKSPACE_BYTES, parseWorkspace, validateWorkspace, type WorkspaceExport } from './workspace-schema';
 
 export class UnbilledDB extends Dexie {
   settings!: Table<Settings, string>;
@@ -554,16 +554,17 @@ export async function exportWorkspace(): Promise<WorkspaceExport> {
 }
 
 export async function importWorkspace(data: WorkspaceExport): Promise<void> {
-  if (!validateWorkspace(data)) throw new Error('This backup is invalid or incompatible. Your existing workspace was not changed.');
+  const cleanWorkspace = parseWorkspace(data);
+  if (!cleanWorkspace) throw new Error('This backup is invalid or incompatible. Your existing workspace was not changed.');
   const db = getDb();
   if (!db) throw new Error('Storage unavailable');
   await db.transaction('rw', db.settings, db.projects, db.asks, db.changeOrders, db.activity, async () => {
     await Promise.all([db.settings.clear(), db.projects.clear(), db.asks.clear(), db.changeOrders.clear(), db.activity.clear()]);
-    if (data.settings) await db.settings.put({ ...data.settings, id: 'settings' });
-    if (data.projects.length) await db.projects.bulkPut(data.projects);
-    if (data.asks.length) await db.asks.bulkPut(data.asks);
-    if (data.changeOrders.length) await db.changeOrders.bulkPut(data.changeOrders);
-    if (data.activity?.length) await db.activity.bulkPut(data.activity);
+    if (cleanWorkspace.settings) await db.settings.put({ ...cleanWorkspace.settings, id: 'settings' });
+    if (cleanWorkspace.projects.length) await db.projects.bulkPut(cleanWorkspace.projects);
+    if (cleanWorkspace.asks.length) await db.asks.bulkPut(cleanWorkspace.asks);
+    if (cleanWorkspace.changeOrders.length) await db.changeOrders.bulkPut(cleanWorkspace.changeOrders);
+    if (cleanWorkspace.activity.length) await db.activity.bulkPut(cleanWorkspace.activity);
   });
 }
 

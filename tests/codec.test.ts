@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { gzipSync, strToU8 } from 'fflate';
 import {
   approvalReceipt,
   buildSharedOrder,
@@ -10,6 +11,7 @@ import {
   encodeSharedScope,
   isChangeOrderExpired,
   MAX_SHARE_LENGTH,
+  MAX_SHARED_PAYLOAD_BYTES,
   parseApprovalReceipt,
   shareUrl,
 } from '@/lib/codec';
@@ -72,6 +74,26 @@ describe('share codec', () => {
 
   it('returns nothing for garbage input', () => {
     expect(decodeSharedOrder('not-a-payload').order).toBeNull();
+  });
+
+  it('rejects type-invalid change-order payloads even when their public checksum is recomputed', () => {
+    const raw = {
+      ...buildSharedOrder(order, 'Halcyon Coffee', 'Maya Chen', undefined, settings),
+      items: [{ d: { injected: true }, h: 'four', r: -1, a: 380 }],
+    } as unknown as Record<string, unknown>;
+    const { checksum: _embedded, ...rest } = raw;
+    raw.checksum = checksum(JSON.stringify(rest));
+    const encoded = Buffer.from(gzipSync(strToU8(JSON.stringify(raw)))).toString('base64url');
+    expect(decodeSharedOrder(encoded)).toEqual({ order: null, corrupted: true });
+  });
+
+  it('rejects oversized compressed share links before parsing unbounded output', () => {
+    const compressedBomb = Buffer.from(gzipSync(strToU8(JSON.stringify({ padding: 'x'.repeat(MAX_SHARED_PAYLOAD_BYTES + 1) })))).toString('base64url');
+    expect(compressedBomb.length).toBeLessThan(MAX_SHARE_LENGTH);
+    expect(decodeSharedOrder(compressedBomb)).toEqual({ order: null, corrupted: true });
+    expect(decodeSharedScope(compressedBomb)).toEqual({ scope: null, corrupted: true });
+    expect(decodeSharedOrder('A'.repeat(MAX_SHARE_LENGTH + 1))).toEqual({ order: null, corrupted: true });
+    expect(decodeSharedScope('A'.repeat(MAX_SHARE_LENGTH + 1))).toEqual({ scope: null, corrupted: true });
   });
 
   it('produces a stable checksum', () => {
@@ -190,6 +212,14 @@ describe('shared scope', () => {
     const shared = buildSharedScope(scopeInput);
     const encoded = encodeSharedScope({ ...shared, revisionRounds: 99 });
     expect(decodeSharedScope(encoded).corrupted).toBe(true);
+  });
+
+  it('rejects type-invalid scope data even when its public checksum is recomputed', () => {
+    const raw = { ...buildSharedScope(scopeInput), deliverables: [{ l: { injected: true }, h: 'eight' }] } as unknown as Record<string, unknown>;
+    const { checksum: _embedded, ...rest } = raw;
+    raw.checksum = checksum(JSON.stringify(rest));
+    const encoded = Buffer.from(gzipSync(strToU8(JSON.stringify(raw)))).toString('base64url');
+    expect(decodeSharedScope(encoded)).toEqual({ scope: null, corrupted: true });
   });
 
   it('rejects garbage', () => {

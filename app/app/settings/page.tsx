@@ -7,7 +7,7 @@ import { PageHeader } from '@/components/app/AppShell';
 import { AccountPanel } from '@/components/account/AccountPanel';
 import { Button, Card, Field, Input, Modal, SectionLabel, Select, Textarea, useToast } from '@/components/ui';
 import { CURRENCIES, type Currency, type Tone } from '@/lib/types';
-import { DEFAULT_TERMS, exportWorkspace, importWorkspace, resetWorkspace, saveSettings, seedDemoWorkspace, validateWorkspace, type WorkspaceExport } from '@/lib/db';
+import { DEFAULT_TERMS, exportWorkspace, importWorkspace, MAX_WORKSPACE_BYTES, resetWorkspace, saveSettings, seedDemoWorkspace, validateWorkspace, type WorkspaceExport } from '@/lib/db';
 import { useAsks, useChangeOrders, useProjects, useReadySettings } from '@/lib/hooks';
 import { TONE_OPTIONS } from '@/lib/templates';
 import { cn } from '@/lib/cn';
@@ -101,6 +101,10 @@ export default function SettingsPage() {
   }
 
   async function importData(file: File) {
+    if (file.size > MAX_WORKSPACE_BYTES) {
+      push('That backup is larger than the 5 MiB restore limit. Your current workspace was not changed.', 'error');
+      return;
+    }
     try {
       const parsed: unknown = JSON.parse(await file.text());
       if (!validateWorkspace(parsed)) {

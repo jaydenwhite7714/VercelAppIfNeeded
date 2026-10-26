@@ -18,7 +18,7 @@ moment visible and gives you the sentence.
 | Ledger | Every request is a line item: absorbed, approved, declined, or held. Monthly estimates and approved-order totals are reported separately; actual time and payments are not tracked. |
 | Replies | Four decisions × three tones, generated with the real project, client, hours and fee filled in. Editable before copying or emailing. |
 | Change orders | Itemised document, PDF export, self-contained approval link, client-side approval receipt with checksum, receipt verification, status tracking. |
-| Client scope page | Share a read-only, plain-language scope (included / not included / revisions) as a private link, so the boundary is agreed before the work starts. |
+| Client scope page | Share a read-only, plain-language scope (included / not included / revisions) as a self-contained URL; anyone with the link can view it. |
 | Leak report | Six-month chart, per-client breakdown, share card exported as PNG, copy-ready summary. |
 | Library | Eight reply scripts in-app, ten contract clauses publicly, plus change order and scope-of-work templates. |
 | Local data | IndexedDB persistence, JSON export/import, sample workspace, full reset. |
@@ -30,8 +30,11 @@ The working ledger remains in this browser's IndexedDB unless you explicitly cho
 optional. Verified accounts use Supabase Auth and a single per-user JSON snapshot in Postgres, protected by row-level
 security; upload, restore, replacement and deletion are manual, not continuous synchronization. Auth/email metadata and
 opt-in workspace snapshots therefore leave the browser when those features are used. The application does not use a
-service-role key. Change-order links carry the document in the URL **fragment** (`#…`), which browsers do not transmit to
-the link host. The public/client link can be reviewed without an account.
+service-role key. Change-order and scope links carry document data in the URL **fragment** (`#…`), which browsers do not
+transmit in HTTP requests to the link host. The fragment is not encrypted or access-controlled: anyone with the full URL
+can inspect the content, so share only with intended recipients. Client review does not notify the sender automatically;
+any approval receipt must be returned by the client. Local JSON restores are schema-validated and capped at 5 MiB; invalid
+files leave the existing workspace unchanged.
 
 ## Stack
 
@@ -42,11 +45,15 @@ the link host. The public/client link can be reviewed without an account.
 - **@supabase/ssr** for HttpOnly cookie sessions and server-side authentication
 - **Vitest** + **fake-indexeddb** for engine, codec, auth-route and persistence tests
 
-The local workspace runs without environment variables and starts with two successful guest actions. Navigation, menus,
-project setup, and reading existing local data do not consume that allowance. Google, Microsoft, and Apple OAuth require
-their Supabase provider setup, the profile migrations, and Preview/Production redirect configuration; email/password signup
-and recovery additionally require verified email delivery. Private cloud backups remain behind the existing database/readiness
-gates. See **Account setup** below. No secret/service-role key is used by the application.
+The local workspace runs without environment variables and starts with two successful guest actions. A successful scope
+check, a committed ledger-add operation (one action per save, including a batch), or a newly saved request decision counts;
+failed operations, navigation, opening records, and project setup do not. The allowance is stored client-side as a
+lightweight trial prompt—not secure anti-abuse enforcement—and may be reset by someone who modifies browser storage.
+Cross-tab updates are synchronized when browser storage events arrive. When the allowance is used, local work remains in
+this browser. Google, Microsoft, and Apple OAuth require their Supabase provider setup, the profile migrations, and
+Preview/Production redirect configuration; email/password signup and recovery additionally require verified email
+delivery. Private cloud backups remain behind the existing database/readiness gates. See **Account setup** below. No
+secret/service-role key is used by the application.
 
 ## Getting started
 

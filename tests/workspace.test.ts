@@ -6,6 +6,8 @@ import {
   exportWorkspace,
   getDb,
   importWorkspace,
+  MAX_WORKSPACE_BYTES,
+  parseWorkspace,
   resetWorkspace,
   saveAsk,
   saveAsks,
@@ -174,6 +176,21 @@ describe('workspace persistence', () => {
     });
     const secondResult = await decideAsk(second.id, 'bill', settings);
     expect(secondResult.changeOrder?.number).toBe('CO-002');
+  });
+
+  it('keeps rapid repeated billing decisions idempotent and creates only one order', async () => {
+    const settings = await freshWorkspace();
+    const project = await createProject({ name: 'Duplicate submit', clientName: 'Client', rate: 100, startDate: '2026-10-01', revisionRounds: 1, scope: [] });
+    const ask = await saveAsk({ projectId: project.id, title: 'Add a page', sourceText: 'Add a page', verdict: 'extra', confidence: 0.9, reasons: [], hours: 2, value: 200, rush: false });
+
+    const [first, second] = await Promise.all([
+      decideAsk(ask.id, 'bill', settings),
+      decideAsk(ask.id, 'bill', settings),
+    ]);
+
+    expect(first.changeOrder?.id).toBe(second.changeOrder?.id);
+    expect(await getDb()!.changeOrders.count()).toBe(1);
+    expect((await getDb()!.asks.get(ask.id))?.status).toBe('billed');
   });
 
   it('does not reuse a deleted change-order number', async () => {
@@ -349,6 +366,39 @@ describe('workspace persistence', () => {
     expect(validateWorkspace(damaged)).toBe(false);
     await expect(importWorkspace(damaged as never)).rejects.toThrow(/existing workspace was not changed/i);
     expect(await getDb()!.projects.count()).toBe(existingProjects);
+  });
+
+  it('restores only the validated backup schema and strips unrecognized fields', async () => {
+    await seedDemoWorkspace();
+    const backup = JSON.parse(JSON.stringify(await exportWorkspace())) as Record<string, unknown>;
+    backup.injected = { shouldNotBeStored: true };
+    const projects = backup.projects as Array<Record<string, unknown>>;
+    projects[0].injected = '<script>not executable</script>';
+
+    const clean = parseWorkspace(backup);
+    expect(clean).not.toBeNull();
+    expect(clean).not.toHaveProperty('injected');
+    expect(clean?.projects[0]).not.toHaveProperty('injected');
+    await importWorkspace(backup as never);
+    const restored = await exportWorkspace();
+    expect(restored).not.toHaveProperty('injected');
+    expect(restored.projects[0]).not.toHaveProperty('injected');
+  });
+
+  it('rejects a backup above the shared 5 MiB limit without changing the existing workspace', async () => {
+    await seedDemoWorkspace();
+    const before = await exportWorkspace();
+    const damaged = JSON.parse(JSON.stringify(before)) as typeof before;
+    damaged.projects[0].notes = 'x'.repeat(MAX_WORKSPACE_BYTES);
+
+    expect(validateWorkspace(damaged)).toBe(false);
+    await expect(importWorkspace(damaged)).rejects.toThrow(/existing workspace was not changed/i);
+    const after = await exportWorkspace();
+    expect(after.settings).toEqual(before.settings);
+    expect(after.projects).toEqual(before.projects);
+    expect(after.asks).toEqual(before.asks);
+    expect(after.changeOrders).toEqual(before.changeOrders);
+    expect(after.activity).toEqual(before.activity);
   });
 
   it('rejects a backup with mismatched change-order totals without changing local records', async () => {

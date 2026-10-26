@@ -3,11 +3,10 @@ import type { User } from '@supabase/supabase-js';
 import { isSameOriginRequest } from '@/lib/auth/origin';
 import { readJsonBody } from '@/lib/auth/request';
 import { z } from 'zod';
-import { validateWorkspace } from '@/lib/workspace-schema';
+import { MAX_WORKSPACE_BYTES, parseWorkspace } from '@/lib/workspace-schema';
 import { accountSetupIssue, createSupabaseServerClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
-const MAX_WORKSPACE_BYTES = 5 * 1024 * 1024;
 const privateHeaders = { 'Cache-Control': 'private, no-store', Vary: 'Cookie' };
 const workspaceWriteSchema = z.object({
   expectedUpdatedAt: z.string().nullable(),
@@ -70,17 +69,18 @@ export async function PUT(request: Request) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: 'This request could not be verified. Reload the page and try again.' }, { status: 403, headers: privateHeaders });
   const auth = await getVerifiedClient();
   if (!auth.ok) return auth.response;
-  const input = await readJsonBody(request, MAX_WORKSPACE_BYTES);
+  const input = await readJsonBody(request, MAX_WORKSPACE_BYTES + 2_048);
   if (!input.ok) return NextResponse.json({ error: input.error }, { status: input.status, headers: privateHeaders });
   const parsed = workspaceWriteSchema.safeParse(input.value);
   if (!parsed.success || (parsed.data.expectedUpdatedAt !== null && !Number.isFinite(Date.parse(parsed.data.expectedUpdatedAt)))) {
     return NextResponse.json({ error: 'The cloud save request is invalid. No cloud data was changed.' }, { status: 400, headers: privateHeaders });
   }
-  if (!validateWorkspace(parsed.data.workspace)) return NextResponse.json({ error: 'This workspace backup is invalid. No cloud data was changed.' }, { status: 400, headers: privateHeaders });
+  const workspace = parseWorkspace(parsed.data.workspace);
+  if (!workspace) return NextResponse.json({ error: 'This workspace backup is invalid. No cloud data was changed.' }, { status: 400, headers: privateHeaders });
 
   try {
     const { data: updatedAt, error } = await auth.supabase.rpc('save_own_workspace_snapshot', {
-      p_workspace: parsed.data.workspace,
+      p_workspace: workspace,
       p_expected_updated_at: parsed.data.expectedUpdatedAt,
     });
     if (error) return NextResponse.json({ error: 'Could not save this account’s private workspace. Your local copy was left unchanged.' }, { status: 502, headers: privateHeaders });

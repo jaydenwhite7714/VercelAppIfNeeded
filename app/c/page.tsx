@@ -56,7 +56,7 @@ export default function ClientChangeOrderPage() {
         <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3.5">
           <Wordmark />
           <span className="mono-label flex items-center gap-1.5">
-            <ShieldCheck className="h-3 w-3 text-sage" /> private link
+            <ShieldCheck className="h-3 w-3 text-sage" /> shared document
           </span>
         </div>
       </header>
@@ -100,6 +100,9 @@ export default function ClientChangeOrderPage() {
             </div>
 
             <ChangeOrderDocument order={order!} />
+            <Card className="mt-4 border-gold/30 bg-gold-soft/40 p-3.5">
+              <p className="text-[11.5px] leading-relaxed text-ink-soft">This document is carried in the link itself. It is not encrypted or access-controlled, so anyone with the link can view it. Avoid forwarding it beyond the intended recipients.</p>
+            </Card>
 
             {approvedAt ? (
               <Card className="mt-5 border-sage/30 bg-sage-soft/50 p-5">

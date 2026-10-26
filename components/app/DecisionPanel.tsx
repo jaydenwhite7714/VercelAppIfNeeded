@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Check, FileSignature, HandHeart, HelpCircle, Mail, MailX } from 'lucide-react';
 import type { Ask, Project, Settings } from '@/lib/types';
@@ -39,6 +39,7 @@ export function DecisionPanel({
 }) {
   const { push } = useToast();
   const { tryAction, recordAction } = useGuestAccess();
+  const savingRef = useRef(false);
   const [decision, setDecision] = useState<Decision>(initialDecision ?? (ask.verdict === 'covered' ? 'absorb' : 'bill'));
   const [hours, setHours] = useState(ask.hours);
   const [value, setValue] = useState(ask.value);
@@ -95,10 +96,11 @@ export function DecisionPanel({
   const suggestedValue = Math.round(hours * project.rate * rushMultiplier);
 
   async function save() {
-    if (saving) return;
+    if (savingRef.current) return;
     const nextStatus = decision === 'absorb' ? 'absorbed' : decision === 'bill' ? 'billed' : decision === 'decline' ? 'declined' : 'clarified';
     const isNewDecision = ask.status !== nextStatus;
     if (isNewDecision && !tryAction()) return;
+    savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -130,6 +132,7 @@ export function DecisionPanel({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the decision.');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }

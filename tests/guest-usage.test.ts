@@ -3,6 +3,7 @@ import {
   canGuestUseAction,
   emptyGuestState,
   GUEST_ACTION_LIMIT,
+  mergeGuestState,
   parseGuestState,
   recordGuestAction,
   remainingGuestActions,
@@ -24,6 +25,15 @@ describe('persistent guest allowance model', () => {
     expect(remainingGuestActions(second)).toBe(0);
     expect(canGuestUseAction(second)).toBe(false);
     expect(recordGuestAction(second).actionsUsed).toBe(2);
+  });
+
+  it('keeps the highest cross-tab usage count and avoids reopening a dismissed limit prompt', () => {
+    const local = { choice: 'guest' as const, actionsUsed: 1, promptDismissed: true };
+    const staleIncoming = { choice: 'guest' as const, actionsUsed: 0, promptDismissed: false };
+    const currentIncoming = { choice: 'guest' as const, actionsUsed: 1, promptDismissed: false };
+    expect(mergeGuestState(local, staleIncoming)).toEqual(local);
+    expect(mergeGuestState(local, currentIncoming)).toEqual(local);
+    expect(mergeGuestState(local, { ...currentIncoming, actionsUsed: 2 })).toEqual({ ...currentIncoming, actionsUsed: 2 });
   });
 
   it('round-trips persisted usage across refresh and clamps malformed over-limit data', () => {

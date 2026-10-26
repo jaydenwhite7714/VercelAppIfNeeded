@@ -28,6 +28,13 @@ export function parseGuestState(value: string | null): GuestState | null {
   }
 }
 
+export function mergeGuestState(current: GuestState, incoming: GuestState | null): GuestState {
+  if (!incoming) return current;
+  if (incoming.actionsUsed > current.actionsUsed) return incoming;
+  if (incoming.actionsUsed < current.actionsUsed) return current;
+  return { ...current, promptDismissed: current.promptDismissed || incoming.promptDismissed };
+}
+
 export function remainingGuestActions(state: GuestState): number {
   return Math.max(0, GUEST_ACTION_LIMIT - state.actionsUsed);
 }

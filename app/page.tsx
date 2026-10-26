@@ -170,7 +170,7 @@ const FEATURES = [
   {
     icon: Fingerprint,
     title: 'Local-first privacy',
-    body: 'No account is required for the ledger. Analysis stays in your browser; an optional verified account can store a private snapshot only when you choose to upload it. Share links still keep their document in the URL fragment.'
+    body: 'No account is required for the ledger. Analysis stays in your browser; an optional verified account can store a private snapshot only when you choose to upload it. Shared documents travel in the URL fragment and are visible to anyone with the link.'
   },
 ];
 
@@ -193,7 +193,7 @@ const FAQ = [
   },
   {
     q: 'How do clients approve a change order?',
-    a: 'You send a link. The entire document travels inside the URL fragment, so it never touches a server. The client opens it, approves, and downloads a receipt with a timestamp and checksum you can attach to the invoice.',
+    a: 'You share a self-contained link. The document is carried in the URL fragment and is not stored on Unbilled servers, but it is not encrypted or access-controlled: anyone with the link can read it. A client can create a timestamped receipt on their device; they must send it back to you, because the app does not transmit approval automatically.'
   },
   {
     q: 'What does it cost?',
@@ -547,12 +547,13 @@ export default function LandingPage() {
             <p className="mt-3 max-w-[46ch] text-[14px] leading-relaxed text-ink-soft">
               The working ledger and scope analysis run in your browser by default. No account is needed to use them.
               An optional verified account can hold a private cloud snapshot only when you explicitly save one; there is
-              no automatic upload of pasted client messages.
+              no automatic upload of pasted client messages. Shared scope and change-order URLs contain their document
+              data in the fragment, so anyone who receives a link can read it.
             </p>
             <ul className="mt-6 space-y-3">
               {[
                 ['Stored in IndexedDB', 'Your ledger lives on this device. Export it as JSON whenever you like.'],
-                ['Share links in the fragment', 'A change order link carries the document after the #, which browsers never send to a server.'],
+                ['Share links in the fragment', 'Document data is not sent in HTTP requests to the link host, but links are not encrypted or access-controlled. Anyone with a link can view it.'],
                 ['No third-party tracking', 'No Google Analytics, no pixels, no session replay, no AI vendor.'],
               ].map(([title, body]) => (
                 <li key={title} className="flex gap-2.5">

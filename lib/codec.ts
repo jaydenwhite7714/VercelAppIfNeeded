@@ -1,10 +1,12 @@
 import { gzipSync, gunzipSync, strToU8, strFromU8 } from 'fflate';
+import { z } from 'zod';
 import { CURRENCIES, type ChangeOrder, type Currency, type Settings } from './types';
 
 /**
  * Change orders are shared as self-contained links: the entire document is
- * compressed into the URL fragment. Fragments are never sent to a server, so
- * the client's name, budget, and terms stay between the two of you.
+ * compressed into the URL fragment. Fragments are not sent in HTTP requests to
+ * the link host, but the link is not encrypted or access-controlled; anyone
+ * who receives it can inspect the document.
  */
 
 export interface SharedChangeOrder {
@@ -28,7 +30,38 @@ export interface SharedChangeOrder {
   validUntil?: string;
 }
 
+const currencySchema = z.enum(CURRENCIES.map((currency) => currency.code) as [Currency, ...Currency[]]);
+const checksumSchema = z.string().min(1).max(10).regex(/^[a-z0-9]+$/);
+const sharedOrderSchema = z.object({
+  v: z.literal(1),
+  checksum: checksumSchema,
+  fromName: z.string(),
+  fromBusiness: z.string(),
+  fromEmail: z.string(),
+  clientName: z.string(),
+  clientEmail: z.string().optional(),
+  projectName: z.string(),
+  number: z.string(),
+  issuedAt: z.string(),
+  title: z.string(),
+  summary: z.string(),
+  items: z.array(z.object({ d: z.string(), h: z.number().finite().min(0), r: z.number().finite().min(0), a: z.number().finite().min(0) }).strict()).max(500),
+  total: z.number().finite().min(0),
+  currency: currencySchema,
+  timeline: z.string(),
+  terms: z.string(),
+  validUntil: z.string().optional(),
+}).strict();
+
 export const MAX_SHARE_LENGTH = 7000;
+export const MAX_SHARED_PAYLOAD_BYTES = 256 * 1024;
+
+function decodeCompressedJson(encoded: string): string | null {
+  if (!encoded || encoded.length > MAX_SHARE_LENGTH) return null;
+  const output = gunzipSync(fromBase64Url(encoded), { out: new Uint8Array(MAX_SHARED_PAYLOAD_BYTES + 1) });
+  if (output.byteLength > MAX_SHARED_PAYLOAD_BYTES) return null;
+  return strFromU8(output);
+}
 
 export function isChangeOrderExpired(validUntil?: string, now = new Date()): boolean {
   return Boolean(validUntil && validUntil < now.toISOString().slice(0, 10));
@@ -97,12 +130,15 @@ export function encodeSharedOrder(order: SharedChangeOrder): string {
 
 export function decodeSharedOrder(encoded: string): { order: SharedChangeOrder | null; corrupted: boolean } {
   try {
-    const json = strFromU8(gunzipSync(fromBase64Url(encoded)));
-    const parsed = JSON.parse(json) as SharedChangeOrder;
-    if (!parsed || parsed.v !== 1 || !Array.isArray(parsed.items)) return { order: null, corrupted: true };
+    const json = decodeCompressedJson(encoded);
+    if (json === null) return { order: null, corrupted: true };
+    const raw: unknown = JSON.parse(json);
+    const result = sharedOrderSchema.safeParse(raw);
+    if (!result.success) return { order: null, corrupted: true };
+    const parsed = raw as SharedChangeOrder;
     const { checksum: embedded, ...rest } = parsed;
     const valid = embedded === checksum(JSON.stringify(rest));
-    return { order: parsed, corrupted: !valid };
+    return { order: result.data, corrupted: !valid };
   } catch {
     return { order: null, corrupted: true };
   }
@@ -190,6 +226,25 @@ export interface SharedScope {
   note?: string;
 }
 
+const sharedScopeSchema = z.object({
+  v: z.literal(1),
+  checksum: checksumSchema,
+  fromName: z.string(),
+  fromBusiness: z.string(),
+  fromEmail: z.string(),
+  clientName: z.string(),
+  projectName: z.string(),
+  issuedAt: z.string(),
+  dueDate: z.string().optional(),
+  revisionRounds: z.number().int().min(0),
+  rate: z.number().finite().min(0).optional(),
+  currency: currencySchema,
+  deliverables: z.array(z.object({ l: z.string(), h: z.number().finite().min(0).optional() }).strict()).max(1_000),
+  included: z.array(z.string()).max(1_000),
+  excluded: z.array(z.string()).max(1_000),
+  note: z.string().optional(),
+}).strict();
+
 export function buildSharedScope(args: {
   settings: Settings;
   projectName: string;
@@ -229,11 +284,14 @@ export function encodeSharedScope(scope: SharedScope): string {
 
 export function decodeSharedScope(encoded: string): { scope: SharedScope | null; corrupted: boolean } {
   try {
-    const json = strFromU8(gunzipSync(fromBase64Url(encoded)));
-    const parsed = JSON.parse(json) as SharedScope;
-    if (!parsed || parsed.v !== 1 || !Array.isArray(parsed.deliverables)) return { scope: null, corrupted: true };
+    const json = decodeCompressedJson(encoded);
+    if (json === null) return { scope: null, corrupted: true };
+    const raw: unknown = JSON.parse(json);
+    const result = sharedScopeSchema.safeParse(raw);
+    if (!result.success) return { scope: null, corrupted: true };
+    const parsed = raw as SharedScope;
     const { checksum: embedded, ...rest } = parsed;
-    return { scope: parsed, corrupted: embedded !== checksum(JSON.stringify(rest)) };
+    return { scope: result.data, corrupted: embedded !== checksum(JSON.stringify(rest)) };
   } catch {
     return { scope: null, corrupted: true };
   }

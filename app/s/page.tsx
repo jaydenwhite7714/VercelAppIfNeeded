@@ -33,7 +33,7 @@ export default function SharedScopePage() {
         <div className="mx-auto flex max-w-2xl items-center justify-between px-5 py-3.5">
           <Wordmark />
           <span className="mono-label flex items-center gap-1.5">
-            <ShieldCheck className="h-3 w-3 text-sage" /> private link
+            <ShieldCheck className="h-3 w-3 text-sage" /> shared scope
           </span>
         </div>
       </header>
@@ -64,6 +64,9 @@ export default function SharedScopePage() {
             <p className="mt-1.5 text-[13px] text-ink-mute">
               Prepared for {scope!.clientName} by {scope!.fromBusiness || scope!.fromName} ·{' '}
               {scope!.dueDate ? `delivery ${formatDate(scope!.dueDate, { year: undefined })}` : formatDate(scope!.issuedAt)}
+            </p>
+            <p role="note" className="mt-3 rounded-lg border border-gold/30 bg-gold-soft/40 px-3 py-2.5 text-[11.5px] leading-relaxed text-ink-soft">
+              This scope is carried in the link itself, not encrypted or access-controlled. Anyone with the URL can view it; share it only with intended recipients.
             </p>
 
             <Card className="mt-5 overflow-hidden">

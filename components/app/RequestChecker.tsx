@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ArrowRight, Plus, ScanSearch, Sparkles } from 'lucide-react';
 import { analyzeMessage, type AnalyzedAsk } from '@/lib/engine/analyze';
 import type { Ask, Project, Settings, Verdict } from '@/lib/types';
@@ -38,6 +38,9 @@ export function RequestChecker({
   const [checking, setChecking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [manualSaving, setManualSaving] = useState(false);
+  const checkingRef = useRef(false);
+  const savingRef = useRef(false);
+  const manualSavingRef = useRef(false);
   const [added, setAdded] = useState(0);
   const [manual, setManual] = useState(false);
   const [manualTitle, setManualTitle] = useState('');
@@ -56,7 +59,8 @@ export function RequestChecker({
   }, [drafts]);
 
   function check() {
-    if (!project || !message.trim() || checking || !tryAction()) return;
+    if (!project || !message.trim() || checkingRef.current || !tryAction()) return;
+    checkingRef.current = true;
     setChecking(true);
     setAdded(0);
     window.setTimeout(() => {
@@ -78,6 +82,7 @@ export function RequestChecker({
       } catch (error) {
         push(error instanceof Error ? error.message : 'Could not analyze that message.', 'error');
       } finally {
+        checkingRef.current = false;
         setChecking(false);
       }
     }, 340);
@@ -88,9 +93,10 @@ export function RequestChecker({
   }
 
   async function addToLedger() {
-    if (!project || !drafts || saving || !tryAction()) return;
+    if (!project || !drafts || savingRef.current) return;
     const selected = drafts.filter((draft) => draft.included);
-    if (!selected.length) return;
+    if (!selected.length || !tryAction()) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       await saveAsks(selected.map((draft) => ({
@@ -114,12 +120,14 @@ export function RequestChecker({
     } catch (error) {
       push(error instanceof Error ? error.message : 'Could not save the requests. Try again.', 'error');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
 
   async function addManual() {
-    if (!project || !manualTitle.trim() || manualSaving || !tryAction()) return;
+    if (!project || !manualTitle.trim() || manualSavingRef.current || !tryAction()) return;
+    manualSavingRef.current = true;
     setManualSaving(true);
     try {
       await saveAsk({
@@ -141,6 +149,7 @@ export function RequestChecker({
     } catch (error) {
       push(error instanceof Error ? error.message : 'Could not add the request.', 'error');
     } finally {
+      manualSavingRef.current = false;
       setManualSaving(false);
     }
   }
