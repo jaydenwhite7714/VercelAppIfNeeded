@@ -11,6 +11,7 @@ import { hoursLabel, money } from '@/lib/format';
 import { Button, Card, EmptyState, Field, Input, Select, Textarea, useToast } from '@/components/ui';
 import { VerdictChip } from '@/components/brand';
 import { cn } from '@/lib/cn';
+import { useGuestAccess } from '@/components/auth/GuestAccess';
 
 interface DraftAsk extends AnalyzedAsk {
   included: boolean;
@@ -29,6 +30,7 @@ export function RequestChecker({
   defaultProjectId?: string;
 }) {
   const { push } = useToast();
+  const { tryAction, recordAction } = useGuestAccess();
   const activeProjects = projects.filter((project) => project.status !== 'complete');
   const [projectId, setProjectId] = useState(defaultProjectId ?? activeProjects[0]?.id ?? '');
   const [message, setMessage] = useState('');
@@ -54,7 +56,7 @@ export function RequestChecker({
   }, [drafts]);
 
   function check() {
-    if (!project || !message.trim()) return;
+    if (!project || !message.trim() || checking || !tryAction()) return;
     setChecking(true);
     setAdded(0);
     window.setTimeout(() => {
@@ -72,6 +74,7 @@ export function RequestChecker({
             included: ask.verdict !== 'covered',
           })),
         );
+        recordAction();
       } catch (error) {
         push(error instanceof Error ? error.message : 'Could not analyze that message.', 'error');
       } finally {
@@ -85,7 +88,7 @@ export function RequestChecker({
   }
 
   async function addToLedger() {
-    if (!project || !drafts) return;
+    if (!project || !drafts || saving || !tryAction()) return;
     const selected = drafts.filter((draft) => draft.included);
     if (!selected.length) return;
     setSaving(true);
@@ -104,6 +107,7 @@ export function RequestChecker({
         rush: draft.rush,
       })));
       setAdded(selected.length);
+      recordAction();
       setDrafts(null);
       setMessage('');
       push(`${selected.length} request${selected.length === 1 ? '' : 's'} added to the ledger.`);
@@ -115,7 +119,7 @@ export function RequestChecker({
   }
 
   async function addManual() {
-    if (!project || !manualTitle.trim() || manualSaving) return;
+    if (!project || !manualTitle.trim() || manualSaving || !tryAction()) return;
     setManualSaving(true);
     try {
       await saveAsk({
@@ -129,6 +133,7 @@ export function RequestChecker({
         value: Math.round(manualHours * project.rate),
         rush: false,
       });
+      recordAction();
       push('Request added.');
       setManualTitle('');
       setManual(false);

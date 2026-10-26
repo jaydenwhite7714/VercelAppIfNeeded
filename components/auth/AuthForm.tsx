@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, CheckCircle2, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { Button, Card, Field, Input } from '@/components/ui';
+import { GoogleOAuthButton } from '@/components/auth/GoogleOAuthButton';
+import { useGuestAccess } from '@/components/auth/GuestAccess';
 import { Wordmark } from '@/components/brand';
 import { emailOnlySchema, passwordUpdateSchema, signInSchema, signupSchema, normalizeEmail } from '@/lib/auth/validation';
 import { getAuthFieldErrors, getAuthSetupBlockers, isAuthSubmitDisabled, type AuthMode, type AuthSetup, type AuthValues } from '@/lib/auth/form-state';
@@ -25,11 +27,12 @@ async function sendJson(url: string, payload: unknown): Promise<{ ok: boolean; d
 }
 
 export function AuthFrame({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+  const { startGuestMode } = useGuestAccess();
   return (
     <main className="flex min-h-dvh flex-col bg-paper px-4 py-8 sm:px-6 sm:py-12">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between">
         <Link href="/" aria-label="Unbilled home"><Wordmark /></Link>
-        <Link href="/app" className="text-xs font-medium text-ink-mute underline-offset-4 hover:text-ink hover:underline">Continue without an account</Link>
+        <Link href="/app" onClick={startGuestMode} className="text-xs font-medium text-ink-mute underline-offset-4 hover:text-ink hover:underline">Continue without an account</Link>
       </div>
       <div className="mx-auto my-auto w-full max-w-md py-10">
         <div className="mb-5 flex items-center gap-2 text-sage"><LockKeyhole className="h-4 w-4" /><span className="mono-label text-sage">optional account · private workspace backup</span></div>
@@ -92,6 +95,10 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       const verification = new URLSearchParams(window.location.search).get('verification');
       if (verification === 'invalid') setError('That verification link is invalid, expired, or already used. Request a fresh link.');
       if (verification === 'unavailable') setError('We could not verify that link. Check account setup and try again.');
+      const oauth = new URLSearchParams(window.location.search).get('oauth');
+      if (oauth === 'cancelled') setMessage('Google sign-in was cancelled. You can try again or use email and password.');
+      if (oauth === 'error') setError('Google sign-in did not complete. Please try again or use email and password.');
+      if (oauth === 'unavailable') setError('Google sign-in is unavailable in this environment. Check the Supabase provider setup and redirect allow list.');
     }
     if (mode === 'signin' && new URLSearchParams(window.location.search).get('password') === 'updated') {
       setMessage('Password updated. Sign in with your new password.');
@@ -149,6 +156,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         return;
       }
       if (mode === 'signin') {
+        window.dispatchEvent(new Event('unbilled:auth-changed'));
         router.replace('/app');
         router.refresh();
         return;
@@ -183,6 +191,12 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         </div>
       ) : null}
       {error ? <p role="alert" className="mb-4 rounded-lg border border-accent/30 bg-accent-soft/60 p-3 text-xs leading-relaxed text-accent-deep">{error}</p> : null}
+      {(mode === 'signup' || mode === 'signin') && setup?.providerConfigured ? (
+        <div className="mb-5">
+          <GoogleOAuthButton next="/app" />
+          <div className="mt-4 flex items-center gap-3 text-[10px] uppercase tracking-[0.15em] text-ink-mute"><span className="h-px flex-1 bg-line" />or use email<span className="h-px flex-1 bg-line" /></div>
+        </div>
+      ) : null}
       <form noValidate onSubmit={(event) => void submit(event)} className="space-y-4">
         {mode === 'signup' ? (
           <Field label="Username" hint={showFieldError('username') ? undefined : '3–24 characters; start with a letter. Letters, numbers, and underscores.'} error={showFieldError('username') ? fieldErrors.username : undefined}>

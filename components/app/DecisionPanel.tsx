@@ -13,6 +13,7 @@ import { hoursLabel, money } from '@/lib/format';
 import { Button, CopyButton, Field, Input, Modal, Select, Textarea, useToast } from '@/components/ui';
 import { VerdictChip } from '@/components/brand';
 import { cn } from '@/lib/cn';
+import { useGuestAccess } from '@/components/auth/GuestAccess';
 
 const DECISIONS: { value: Decision; title: string; blurb: string; icon: typeof HandHeart }[] = [
   { value: 'absorb', title: 'Absorb it', blurb: 'Do it free, with a cap and a trade.', icon: HandHeart },
@@ -37,6 +38,7 @@ export function DecisionPanel({
   initialDecision?: Decision;
 }) {
   const { push } = useToast();
+  const { tryAction, recordAction } = useGuestAccess();
   const [decision, setDecision] = useState<Decision>(initialDecision ?? (ask.verdict === 'covered' ? 'absorb' : 'bill'));
   const [hours, setHours] = useState(ask.hours);
   const [value, setValue] = useState(ask.value);
@@ -93,6 +95,10 @@ export function DecisionPanel({
   const suggestedValue = Math.round(hours * project.rate * rushMultiplier);
 
   async function save() {
+    if (saving) return;
+    const nextStatus = decision === 'absorb' ? 'absorbed' : decision === 'bill' ? 'billed' : decision === 'decline' ? 'declined' : 'clarified';
+    const isNewDecision = ask.status !== nextStatus;
+    if (isNewDecision && !tryAction()) return;
     setSaving(true);
     setError(null);
     try {
@@ -100,6 +106,7 @@ export function DecisionPanel({
         // keep the engine verdict unless the user overrides hours; nothing to do here
       }
       const result = await decideAsk(ask.id, decision, settings, { hours, value, timelineDays });
+      if (isNewDecision) recordAction();
       if (decision === 'bill' && result.changeOrder) {
         const shared = buildSharedOrder(result.changeOrder, project.name, project.clientName, project.clientEmail, settings);
         const encoded = encodeSharedOrder(shared);

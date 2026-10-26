@@ -5,11 +5,13 @@ import { signupSchema, normalizeEmail, normalizeUsername, safeNextPath } from '@
 import { getAccountSetupIssue, getAccountSetupStatus } from '@/lib/auth/readiness';
 import { getAuthFieldErrors, getAuthSetupBlockers, isAuthSubmitDisabled } from '@/lib/auth/form-state';
 
-const { accountSetupIssue, auth, createSupabaseServerClient, from, rpc } = vi.hoisted(() => ({
+const { accountSetupIssue, accountSetupStatus, auth, createSupabaseServerClient, from, rpc } = vi.hoisted(() => ({
   accountSetupIssue: vi.fn(),
+  accountSetupStatus: vi.fn(),
   auth: {
     signUp: vi.fn(),
     signInWithPassword: vi.fn(),
+    signInWithOAuth: vi.fn(),
     resend: vi.fn(),
     resetPasswordForEmail: vi.fn(),
     exchangeCodeForSession: vi.fn(),
@@ -24,6 +26,7 @@ const { accountSetupIssue, auth, createSupabaseServerClient, from, rpc } = vi.ho
 
 vi.mock('@/lib/supabase/server', () => ({
   accountSetupIssue,
+  accountSetupStatus,
   createSupabaseServerClient,
   getAppOrigin: (requestUrl: string) => new URL(requestUrl).origin,
   getSupabaseEnv: () => ({ url: 'https://test.supabase.co', key: 'public-test-key' }),
@@ -31,6 +34,7 @@ vi.mock('@/lib/supabase/server', () => ({
 
 import { POST as signup } from '@/app/api/auth/signup/route';
 import { POST as signin } from '@/app/api/auth/signin/route';
+import { POST as googleOAuth } from '@/app/api/auth/google/route';
 import { POST as resend } from '@/app/api/auth/resend/route';
 import { POST as reset } from '@/app/api/auth/reset/route';
 import { POST as updatePassword } from '@/app/api/auth/password/route';
@@ -59,6 +63,7 @@ const validSignup = {
 beforeEach(() => {
   vi.clearAllMocks();
   accountSetupIssue.mockReturnValue(null);
+  accountSetupStatus.mockReturnValue({ providerConfigured: true, databaseReady: true, emailReady: false });
   from.mockReset();
   rpc.mockReset();
   createSupabaseServerClient.mockReset();
@@ -66,6 +71,7 @@ beforeEach(() => {
   rpc.mockResolvedValue({ data: true, error: null });
   auth.signUp.mockResolvedValue({ data: { user: { id: 'user-1' }, session: null }, error: null });
   auth.signInWithPassword.mockResolvedValue({ data: { user: { id: 'user-1', email_confirmed_at: '2026-10-25T00:00:00Z' } }, error: null });
+  auth.signInWithOAuth.mockResolvedValue({ data: { url: 'https://test.supabase.co/auth/v1/authorize?provider=google' }, error: null });
   auth.resend.mockResolvedValue({ error: null });
   auth.resetPasswordForEmail.mockResolvedValue({ error: null });
   auth.exchangeCodeForSession.mockResolvedValue({ error: null });
@@ -265,6 +271,35 @@ describe('provider-backed auth route behavior', () => {
     expect((await payload(limited)).error).toMatch(/wait a little while/i);
   });
 
+  it('starts Google OAuth only after the database profile schema gate is ready', async () => {
+    accountSetupStatus.mockReturnValue({ providerConfigured: true, databaseReady: false, emailReady: false });
+    const blocked = await googleOAuth(jsonRequest('/api/auth/google', { next: '/app' }));
+    expect(blocked.status).toBe(503);
+    expect(auth.signInWithOAuth).not.toHaveBeenCalled();
+
+    accountSetupStatus.mockReturnValue({ providerConfigured: true, databaseReady: true, emailReady: false });
+    const response = await googleOAuth(jsonRequest('/api/auth/google', { next: '/app' }));
+    expect(response.status).toBe(200);
+    expect((await payload(response)).url).toContain('provider=google');
+    expect(auth.signInWithOAuth).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'google',
+      options: expect.objectContaining({
+        scopes: 'openid email profile',
+        queryParams: { prompt: 'select_account consent' },
+        redirectTo: expect.stringContaining('/auth/callback?flow=google&next=%2Fapp'),
+      }),
+    }));
+  });
+
+  it('handles OAuth cancellation and returns a successful OAuth session to the app, not verification', async () => {
+    const cancelled = await authCallback(new NextRequest('http://localhost:3000/auth/callback?flow=google&error=access_denied'));
+    expect(cancelled.headers.get('location')).toContain('/signup?oauth=cancelled');
+    auth.exchangeCodeForSession.mockResolvedValueOnce({ error: null });
+    const completed = await authCallback(new NextRequest('http://localhost:3000/auth/callback?flow=google&code=google-code&next=%2Fapp'));
+    expect(completed.headers.get('location')).toBe('http://localhost:3000/app');
+    expect(completed.headers.get('location')).not.toContain('verified');
+  });
+
   it('requests email verification with a safe, non-enumerating retry response', async () => {
     const response = await resend(jsonRequest('/api/auth/resend', { email: 'Person@Example.com' }));
     expect(response.status).toBe(200);
@@ -331,6 +366,15 @@ describe('provider-backed auth route behavior', () => {
 });
 
 describe('database protections and local-data migration', () => {
+  it('adds collision-safe Google profile usernames without removing email username validation', () => {
+    const sql = readFileSync('supabase/migrations/20261025000200_google_oauth_profiles.sql', 'utf8');
+    expect(sql).toContain("provider_name <> 'google'");
+    expect(sql).toContain("new.raw_user_meta_data ->> 'username'");
+    expect(sql).toContain('on conflict (username_normalized) do nothing');
+    expect(sql).toContain('create_unbilled_profile_for_auth_user');
+    expect(sql).not.toMatch(/disable row level security|grant .*service_role/i);
+  });
+
   it('uses a database unique constraint and auth trigger for atomic case-insensitive usernames', () => {
     const sql = readFileSync('supabase/migrations/20261025000100_accounts_and_private_workspaces.sql', 'utf8');
     expect(sql).toContain('unique (username_normalized)');

@@ -22,7 +22,7 @@ moment visible and gives you the sentence.
 | Leak report | Six-month chart, per-client breakdown, share card exported as PNG, copy-ready summary. |
 | Library | Eight reply scripts in-app, ten contract clauses publicly, plus change order and scope-of-work templates. |
 | Local data | IndexedDB persistence, JSON export/import, sample workspace, full reset. |
-| Optional accounts | Email/password signup and verification via Supabase Auth; password recovery; manually saved private account snapshots in Supabase Postgres with RLS. No automatic sync and no account required for the local app. |
+| Optional accounts | Google OAuth and email/password signup through Supabase Auth; password recovery; manually saved private account snapshots in Supabase Postgres with RLS. No automatic sync and no account required for local data. |
 
 ## Local-first and optional account backups
 
@@ -42,9 +42,11 @@ the link host. The public/client link can be reviewed without an account.
 - **@supabase/ssr** for HttpOnly cookie sessions and server-side authentication
 - **Vitest** + **fake-indexeddb** for engine, codec, auth-route and persistence tests
 
-The local-only workspace runs without environment variables. Signup, verification email, sign-in, password recovery, and
-private cloud backups remain disabled until the owner configures Supabase and email delivery; see **Account setup** below.
-No secret/service-role key is used by the application.
+The local workspace runs without environment variables and starts with two successful guest actions. Navigation, menus,
+project setup, and reading existing local data do not consume that allowance. Google OAuth requires the Supabase provider,
+profile migration, and Preview/Production redirect configuration; email/password signup and recovery additionally require
+verified email delivery. Private cloud backups remain behind the existing database/readiness gates. See **Account setup**
+below. No secret/service-role key is used by the application.
 
 ## Getting started
 
@@ -102,26 +104,36 @@ No provider account or sender has been created from this session. Account routes
 is completed. Keep the Supabase project on its free plan; do not enable paid add-ons or enter billing details without
 separate approval.
 
-1. **Create a Supabase project** on the free plan. In **SQL Editor**, run
-   `supabase/migrations/20261025000100_accounts_and_private_workspaces.sql`. It creates:
+1. **Create a Supabase project** on the free plan. In **SQL Editor**, run both migrations in order:
+   `supabase/migrations/20261025000100_accounts_and_private_workspaces.sql`, then
+   `supabase/migrations/20261025000200_google_oauth_profiles.sql`. The first creates:
    - a `profiles` row for every new Auth user, with a database-enforced case-insensitive username uniqueness constraint;
    - a `user_workspaces` JSON snapshot table with RLS scoped to `auth.uid()`;
    - owner-bound compare-and-swap RPCs for saving/deleting snapshots; direct anon/authenticated write grants are revoked.
+   The second migration keeps the explicit username validation for email signups and assigns collision-safe usernames to new Google OAuth users. It does not change RLS or cloud workspace ownership.
 2. In **Authentication → Providers**, enable Email and turn on **Confirm email**. Set the provider minimum password length to
    **12** so direct use of Supabase's public Auth API cannot bypass the server-side app validation. Supabase Auth applies
    its own password hashing, verification token expiry/use rules, session management and Auth rate limits.
-3. In **Authentication → URL Configuration**, set the Site URL to your actual app origin and allow the exact callback URLs
-   `/auth/callback` for that origin plus local development `http://localhost:3000/auth/callback`. Add the intended Vercel
-   Preview URL pattern only if you need preview auth. Do not use an untrusted open redirect.
-4. In **Authentication → Email Templates**, paste `supabase/templates/confirm-signup.html` into the confirmation template
+3. In **Authentication → URL Configuration**, set the Site URL to your actual app origin and allow the exact app callback
+   URLs `/auth/callback` for that origin plus local development `http://localhost:3000/auth/callback`. Preview callback
+   hosts use Vercel's deployment URL (`VERCEL_URL`); allow only the exact branch/deployment hosts or a narrowly scoped
+   wildcard for your Vercel project. Do not use an untrusted open redirect.
+4. **Google OAuth:** in **Authentication → Providers → Google**, enable Google and enter the OAuth client ID and secret from
+   a Google Cloud OAuth client. In Google Cloud's **Authorized redirect URIs**, use the Supabase callback URL shown on that
+   provider page (normally `https://<project-ref>.supabase.co/auth/v1/callback`); this is different from the app's
+   `/auth/callback`. Set the app callback allow-list in Supabase URL Configuration for local, intended Preview, and
+   Production origins. The app requests Google's account chooser and consent. Keep the Google client secret in Supabase
+   only; never put it in Git or a `NEXT_PUBLIC_*` variable. Provider enablement and callback registration must be tested
+   with an actual Google account before claiming live OAuth works.
+5. In **Authentication → Email Templates**, paste `supabase/templates/confirm-signup.html` into the confirmation template
    and `supabase/templates/reset-password.html` into the password recovery template. Both use Supabase's secure
    `{{ .ConfirmationURL }}` token and `{{ .SiteURL }}` variables.
-5. **Email delivery:** Supabase Auth's built-in email sender is suitable only for limited testing and may restrict recipients
+6. **Email delivery:** Supabase Auth's built-in email sender is suitable only for limited testing and may restrict recipients
    or rate. For general use, configure a custom SMTP sender in Supabase Auth using a sender/domain you already control.
    Verify its sender/domain with that provider, test both confirmation and reset emails, and keep SMTP credentials only in
    the Supabase dashboard. Do not use a personal Gmail password, do not buy a domain, and verify the sender's free-tier
    limits before using it. The app uses Supabase Auth's signup/resend/reset APIs; it does not send mail itself.
-6. Copy only the Supabase **Project URL** and **anon/publishable key** (not service-role/secret keys) to `.env.local` and the
+7. Copy only the Supabase **Project URL** and **anon/publishable key** (not service-role/secret keys) to `.env.local` and the
    intended Vercel environment:
 
    ```dotenv
@@ -140,7 +152,7 @@ separate approval.
    checked. Do not treat turning a gate on as proof that the provider is working. For local development, use
    `NEXT_PUBLIC_APP_URL=http://localhost:3000`. The public key is intentionally public; **never set or expose a
    service-role key**. Add Vercel variables yourself only after review; production settings were not changed here.
-7. Register an account, verify its email, sign in, then use Settings → **Account & private backup** to save/restore a
+8. Register with Google or email, then use Settings → **Account & private backup** to save/restore a
    snapshot. The first upload leaves local data in place. Restore downloads a JSON copy of the current browser workspace
    before replacing it. Concurrent overwrites are rejected. Sign-out does not delete local IndexedDB data. Account deletion
    is not self-service yet; the project owner must remove the account in Supabase Auth.

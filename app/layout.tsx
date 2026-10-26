@@ -4,6 +4,7 @@ import '@fontsource-variable/inter-tight';
 import '@fontsource-variable/jetbrains-mono';
 import './globals.css';
 import { ToastProvider } from '@/components/ui';
+import { GuestAccessProvider } from '@/components/auth/GuestAccess';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://unbilled.app'),
@@ -50,7 +51,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-dvh bg-paper text-ink antialiased">
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          <GuestAccessProvider>{children}</GuestAccessProvider>
+        </ToastProvider>
       </body>
     </html>
   );
