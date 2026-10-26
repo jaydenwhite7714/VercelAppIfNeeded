@@ -5,7 +5,7 @@
   "description": "Unbilled — the free-work ledger for freelancers. Catch, price, and push back on scope creep before you absorb it.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/build.mjs",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
+    "@opennextjs/cloudflare": "1.20.13",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.0",
@@ -47,9 +48,16 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.72.0",
     "vite": "^8.3.5",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "wrangler": "4.152.0"
   },
   "overrides": {
-    "postcss": "8.5.31"
+    "postcss": "8.5.31",
+    "@node-minify/core": {
+      "glob": "10.5.0"
+    },
+    "miniflare@5.20261019.2-beta": {
+      "undici": "7.30.1"
+    }
   }
 }

@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "unbilled",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-10-25",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  },
+  // Keep dashboard-managed production variables; no values or secrets are committed here.
+  "keep_vars": true,
+  "previews": {
+    "vars": {
+      "SUPABASE_AUTH_SCHEMA_READY": "false",
+      "SUPABASE_EMAIL_DELIVERY_READY": "false"
+    }
+  }
+}

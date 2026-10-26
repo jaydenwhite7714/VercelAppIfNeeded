@@ -10,3 +10,9 @@ npm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 coverage
+
+# Cloudflare Workers / OpenNext build output and local-only secrets
+.open-next
+.wrangler
+.dev.vars*
+!.dev.vars.example
