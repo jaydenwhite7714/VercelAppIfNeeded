@@ -22,7 +22,7 @@ moment visible and gives you the sentence.
 | Leak report | Six-month chart, per-client breakdown, share card exported as PNG, copy-ready summary. |
 | Library | Eight reply scripts in-app, ten contract clauses publicly, plus change order and scope-of-work templates. |
 | Local data | IndexedDB persistence, JSON export/import, sample workspace, full reset. |
-| Optional accounts | Google OAuth and email/password signup through Supabase Auth; password recovery; manually saved private account snapshots in Supabase Postgres with RLS. No automatic sync and no account required for local data. |
+| Optional accounts | Google, Microsoft, and Apple OAuth plus email/password signup through Supabase Auth; password recovery; manually saved private account snapshots in Supabase Postgres with RLS. No automatic sync and no account required for local data. |
 
 ## Local-first and optional account backups
 
@@ -43,10 +43,10 @@ the link host. The public/client link can be reviewed without an account.
 - **Vitest** + **fake-indexeddb** for engine, codec, auth-route and persistence tests
 
 The local workspace runs without environment variables and starts with two successful guest actions. Navigation, menus,
-project setup, and reading existing local data do not consume that allowance. Google OAuth requires the Supabase provider,
-profile migration, and Preview/Production redirect configuration; email/password signup and recovery additionally require
-verified email delivery. Private cloud backups remain behind the existing database/readiness gates. See **Account setup**
-below. No secret/service-role key is used by the application.
+project setup, and reading existing local data do not consume that allowance. Google, Microsoft, and Apple OAuth require
+their Supabase provider setup, the profile migrations, and Preview/Production redirect configuration; email/password signup
+and recovery additionally require verified email delivery. Private cloud backups remain behind the existing database/readiness
+gates. See **Account setup** below. No secret/service-role key is used by the application.
 
 ## Getting started
 
@@ -104,13 +104,15 @@ No provider account or sender has been created from this session. Account routes
 is completed. Keep the Supabase project on its free plan; do not enable paid add-ons or enter billing details without
 separate approval.
 
-1. **Create a Supabase project** on the free plan. In **SQL Editor**, run both migrations in order:
+1. **Create a Supabase project** on the free plan. In **SQL Editor**, run all three migrations in order:
    `supabase/migrations/20261025000100_accounts_and_private_workspaces.sql`, then
-   `supabase/migrations/20261025000200_google_oauth_profiles.sql`. The first creates:
+   `supabase/migrations/20261025000200_google_oauth_profiles.sql`, then
+   `supabase/migrations/20261025000300_apple_microsoft_oauth_profiles.sql`. If this project already has the first two
+   migrations applied, apply only the new third migration. The first migration creates:
    - a `profiles` row for every new Auth user, with a database-enforced case-insensitive username uniqueness constraint;
    - a `user_workspaces` JSON snapshot table with RLS scoped to `auth.uid()`;
    - owner-bound compare-and-swap RPCs for saving/deleting snapshots; direct anon/authenticated write grants are revoked.
-   The second migration keeps the explicit username validation for email signups and assigns collision-safe usernames to new Google OAuth users. It does not change RLS or cloud workspace ownership.
+   The second migration keeps explicit username validation for email signups and assigns collision-safe usernames to Google OAuth users. The third extends that same profile trigger to Microsoft Azure and Apple sign-ins; it does not change RLS, account linking, or cloud workspace ownership.
 2. In **Authentication → Providers**, enable Email and turn on **Confirm email**. Set the provider minimum password length to
    **12** so direct use of Supabase's public Auth API cannot bypass the server-side app validation. Supabase Auth applies
    its own password hashing, verification token expiry/use rules, session management and Auth rate limits.
@@ -118,13 +120,43 @@ separate approval.
    URLs `/auth/callback` for that origin plus local development `http://localhost:3000/auth/callback`. Preview callback
    hosts use Vercel's deployment URL (`VERCEL_URL`); allow only the exact branch/deployment hosts or a narrowly scoped
    wildcard for your Vercel project. Do not use an untrusted open redirect.
-4. **Google OAuth:** in **Authentication → Providers → Google**, enable Google and enter the OAuth client ID and secret from
-   a Google Cloud OAuth client. In Google Cloud's **Authorized redirect URIs**, use the Supabase callback URL shown on that
-   provider page (normally `https://<project-ref>.supabase.co/auth/v1/callback`); this is different from the app's
-   `/auth/callback`. Set the app callback allow-list in Supabase URL Configuration for local, intended Preview, and
-   Production origins. The app requests Google's account chooser and consent. Keep the Google client secret in Supabase
-   only; never put it in Git or a `NEXT_PUBLIC_*` variable. Provider enablement and callback registration must be tested
-   with an actual Google account before claiming live OAuth works.
+4. **Social OAuth providers:** the app uses one same-origin OAuth initiation route and the shared `/auth/callback`; the
+   social providers do not need separate application callbacks. Each provider's developer console must point to Supabase's
+   callback URL, normally `https://<project-ref>.supabase.co/auth/v1/callback` (copy the exact URL shown in Supabase
+   **Authentication → Providers**). This is distinct from the app callback. In Supabase **Authentication → URL
+   Configuration**, allow the exact app callback `/auth/callback` for local development, intended Preview hosts, and the
+   actual Production origin. Keep provider client secrets in Supabase only—never in Git, app code, or `NEXT_PUBLIC_*`
+   variables. Supabase's automatic identity linking is the only linking behavior used here; there is no application-side
+   linking by email. Supabase is responsible for requiring a verified matching email before automatically linking
+   identities. Do not enable a provider until its verification behavior and redirect have been tested.
+
+   - **Google:** in Google Cloud Console, configure the OAuth consent screen and create an OAuth client with application
+     type **Web application**. In **Authorized redirect URIs**, add the Supabase callback above. In Supabase
+     **Authentication → Providers → Google**, enable the provider and enter the OAuth client ID and client secret. The
+     app requests `openid email profile` and retains the existing account chooser/consent behavior.
+   - **Microsoft:** in Supabase, enable **Azure** and enter the Microsoft Entra application (client) ID and client secret.
+     In Entra **App registrations**, create an app registration, select the supported account types you intend to accept,
+     add the Supabase callback above as a **Web** redirect URI, add the `email` scope/permission, and create a client secret
+     (copy its value once into Supabase). Supabase's default tenant is `common` (work/school and personal accounts); use
+     `consumers` for personal Microsoft accounts only, or the tenant-specific authorization URL
+     `https://login.microsoftonline.com/<tenant-id>` to restrict sign-in to one organization. Configure the tenant in the
+     Supabase Azure provider settings, not in the app callback. The app requests only the `email` scope. Entra can provide
+     an unverified email claim in some configurations: configure the optional `xms_edov` claim in the Entra token
+     configuration (ID token; include the access token if required by your Supabase setup), and test with accounts that
+     do and do not have verified email. Supabase must remain responsible for verified-email automatic linking; never
+     manually link on an email match alone.
+   - **Apple:** web sign-in requires an Apple Developer account with Sign in with Apple configured, an App ID with the
+     capability enabled, a **Services ID** for the web client, and a Sign in with Apple key. Register the Services ID's
+     website domain and return URL as required by Apple; the return URL is Supabase's callback above. In Supabase's Apple
+     provider settings, use the Services ID as the client ID and supply the Team ID, Key ID, and the client secret
+     generated from the Apple private `.p8` key. The `.p8` key and generated secret stay private in Supabase; Apple's
+     generated client secret expires and must be rotated at least every six months. The app requests `email`; Apple web
+     OAuth does not provide a full name to this server-side flow, which is not needed for the generated profile username.
+     Apple Developer Program membership currently costs USD $99 per year (regional pricing may vary; eligible entities
+     may qualify for a fee waiver). Do not enroll or pay unless separately approved. If no suitable membership already
+     exists, Apple sign-in cannot be fully configured or live-tested until the owner decides whether to enroll. If using
+     Apple's private relay email, configure the sender domains in Apple's relay settings so Supabase verification and
+     recovery email can reach those addresses.
 5. In **Authentication → Email Templates**, paste `supabase/templates/confirm-signup.html` into the confirmation template
    and `supabase/templates/reset-password.html` into the password recovery template. Both use Supabase's secure
    `{{ .ConfirmationURL }}` token and `{{ .SiteURL }}` variables.
@@ -152,7 +184,7 @@ separate approval.
    checked. Do not treat turning a gate on as proof that the provider is working. For local development, use
    `NEXT_PUBLIC_APP_URL=http://localhost:3000`. The public key is intentionally public; **never set or expose a
    service-role key**. Add Vercel variables yourself only after review; production settings were not changed here.
-8. Register with Google or email, then use Settings → **Account & private backup** to save/restore a
+8. Register with any enabled Google, Microsoft, or Apple provider, or with email, then use Settings → **Account & private backup** to save/restore a
    snapshot. The first upload leaves local data in place. Restore downloads a JSON copy of the current browser workspace
    before replacing it. Concurrent overwrites are rejected. Sign-out does not delete local IndexedDB data. Account deletion
    is not self-service yet; the project owner must remove the account in Supabase Auth.

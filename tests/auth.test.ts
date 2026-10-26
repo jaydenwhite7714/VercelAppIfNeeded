@@ -34,7 +34,7 @@ vi.mock('@/lib/supabase/server', () => ({
 
 import { POST as signup } from '@/app/api/auth/signup/route';
 import { POST as signin } from '@/app/api/auth/signin/route';
-import { POST as googleOAuth } from '@/app/api/auth/google/route';
+import { POST as oauthInitiation } from '@/app/api/auth/oauth/route';
 import { POST as resend } from '@/app/api/auth/resend/route';
 import { POST as reset } from '@/app/api/auth/reset/route';
 import { POST as updatePassword } from '@/app/api/auth/password/route';
@@ -271,33 +271,73 @@ describe('provider-backed auth route behavior', () => {
     expect((await payload(limited)).error).toMatch(/wait a little while/i);
   });
 
-  it('starts Google OAuth only after the database profile schema gate is ready', async () => {
+  it('starts Google, Microsoft (Azure), and Apple OAuth with supported provider IDs and scopes', async () => {
     accountSetupStatus.mockReturnValue({ providerConfigured: true, databaseReady: false, emailReady: false });
-    const blocked = await googleOAuth(jsonRequest('/api/auth/google', { next: '/app' }));
+    const blocked = await oauthInitiation(jsonRequest('/api/auth/oauth', { provider: 'google', next: '/app' }));
     expect(blocked.status).toBe(503);
     expect(auth.signInWithOAuth).not.toHaveBeenCalled();
 
     accountSetupStatus.mockReturnValue({ providerConfigured: true, databaseReady: true, emailReady: false });
-    const response = await googleOAuth(jsonRequest('/api/auth/google', { next: '/app' }));
-    expect(response.status).toBe(200);
-    expect((await payload(response)).url).toContain('provider=google');
-    expect(auth.signInWithOAuth).toHaveBeenCalledWith(expect.objectContaining({
-      provider: 'google',
-      options: expect.objectContaining({
-        scopes: 'openid email profile',
-        queryParams: { prompt: 'select_account consent' },
-        redirectTo: expect.stringContaining('/auth/callback?flow=google&next=%2Fapp'),
-      }),
-    }));
+    const expectations = [
+      { provider: 'google', scopes: 'openid email profile', queryParams: { prompt: 'select_account consent' } },
+      { provider: 'azure', scopes: 'email', queryParams: { prompt: 'select_account' } },
+      { provider: 'apple', scopes: 'email', queryParams: undefined },
+    ] as const;
+    for (const expected of expectations) {
+      const response = await oauthInitiation(jsonRequest('/api/auth/oauth', { provider: expected.provider, next: '/app' }));
+      expect(response.status).toBe(200);
+      expect((await payload(response)).url).toContain('provider=');
+      expect(auth.signInWithOAuth).toHaveBeenLastCalledWith(expect.objectContaining({
+        provider: expected.provider,
+        options: expect.objectContaining({
+          scopes: expected.scopes,
+          ...(expected.queryParams ? { queryParams: expected.queryParams } : {}),
+          redirectTo: expect.stringContaining(`/auth/callback?flow=oauth&provider=${expected.provider}&next=%2Fapp`),
+        }),
+      }));
+    }
   });
 
-  it('handles OAuth cancellation and returns a successful OAuth session to the app, not verification', async () => {
-    const cancelled = await authCallback(new NextRequest('http://localhost:3000/auth/callback?flow=google&error=access_denied'));
-    expect(cancelled.headers.get('location')).toContain('/signup?oauth=cancelled');
+  it('rejects invalid provider and cross-origin requests and sanitizes provider errors', async () => {
+    const invalid = await oauthInitiation(jsonRequest('/api/auth/oauth', { provider: 'microsoft', next: '/app' }));
+    expect(invalid.status).toBe(400);
+    const crossOrigin = await oauthInitiation(new Request('http://localhost:3000/api/auth/oauth', {
+      method: 'POST', headers: { Origin: 'https://attacker.example', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: 'azure', next: '/app' }),
+    }));
+    expect(crossOrigin.status).toBe(403);
+    auth.signInWithOAuth.mockResolvedValueOnce({ data: { url: null }, error: { message: 'secret provider detail' } });
+    const unavailable = await oauthInitiation(jsonRequest('/api/auth/oauth', { provider: 'apple' }));
+    expect(unavailable.status).toBe(503);
+    const unavailableBody = await payload(unavailable);
+    expect(String(unavailableBody.error)).toMatch(/Apple sign-in is unavailable/i);
+    expect(String(unavailableBody.error)).not.toContain('secret provider detail');
+  });
+
+  it('handles provider cancellation, callback errors, and safe redirects without a verification screen', async () => {
+    const cancelled = await authCallback(new NextRequest('http://localhost:3000/auth/callback?flow=oauth&provider=azure&error=access_denied'));
+    expect(cancelled.headers.get('location')).toContain('/signup?oauth=cancelled&provider=azure');
+    const appleCancelled = await authCallback(new NextRequest('http://localhost:3000/auth/callback?flow=oauth&provider=apple&error=user_cancelled_authorize'));
+    expect(appleCancelled.headers.get('location')).toContain('/signup?oauth=cancelled&provider=apple');
+    const invalidProvider = await authCallback(new NextRequest('http://localhost:3000/auth/callback?flow=oauth&provider=microsoft&code=bad-code'));
+    expect(invalidProvider.headers.get('location')).toContain('/signup?oauth=error');
+    expect(auth.exchangeCodeForSession).not.toHaveBeenCalled();
+
+    auth.exchangeCodeForSession.mockResolvedValueOnce({ error: { message: 'internal provider detail' } });
+    const failedExchange = await authCallback(new NextRequest('http://localhost:3000/auth/callback?flow=oauth&provider=azure&code=bad-code'));
+    expect(failedExchange.headers.get('location')).toContain('/signup?oauth=error&provider=azure');
+    expect(failedExchange.headers.get('location')).not.toContain('internal provider detail');
+
+    auth.exchangeCodeForSession.mockResolvedValueOnce({ error: null });
+    const completed = await authCallback(new NextRequest('http://localhost:3000/auth/callback?flow=oauth&provider=apple&code=apple-code&next=https%3A%2F%2Fattacker.example'));
+    expect(completed.headers.get('location')).toBe('http://localhost:3000/app');
+    expect(completed.headers.get('location')).not.toContain('verified');
+  });
+
+  it('continues to accept an in-flight Google callback created by the prior route', async () => {
     auth.exchangeCodeForSession.mockResolvedValueOnce({ error: null });
     const completed = await authCallback(new NextRequest('http://localhost:3000/auth/callback?flow=google&code=google-code&next=%2Fapp'));
     expect(completed.headers.get('location')).toBe('http://localhost:3000/app');
-    expect(completed.headers.get('location')).not.toContain('verified');
   });
 
   it('requests email verification with a safe, non-enumerating retry response', async () => {
@@ -373,6 +413,14 @@ describe('database protections and local-data migration', () => {
     expect(sql).toContain('on conflict (username_normalized) do nothing');
     expect(sql).toContain('create_unbilled_profile_for_auth_user');
     expect(sql).not.toMatch(/disable row level security|grant .*service_role/i);
+  });
+
+  it('extends unique generated profiles to Azure and Apple without changing workspace security', () => {
+    const sql = readFileSync('supabase/migrations/20261025000300_apple_microsoft_oauth_profiles.sql', 'utf8');
+    expect(sql).toContain("provider_name not in ('google', 'azure', 'apple')");
+    expect(sql).toContain('on conflict (username_normalized) do nothing');
+    expect(sql).toContain('pg_catalog.gen_random_uuid()');
+    expect(sql).not.toMatch(/alter table public\.user_workspaces|drop policy|disable row level security|service_role/i);
   });
 
   it('uses a database unique constraint and auth trigger for atomic case-insensitive usernames', () => {

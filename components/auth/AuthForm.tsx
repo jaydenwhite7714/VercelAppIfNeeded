@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, CheckCircle2, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { Button, Card, Field, Input } from '@/components/ui';
-import { GoogleOAuthButton } from '@/components/auth/GoogleOAuthButton';
+import { OAuthProviderButtons } from '@/components/auth/OAuthProviderButtons';
+import { oauthProviderLabel, parseOAuthProvider } from '@/lib/auth/oauth';
 import { useGuestAccess } from '@/components/auth/GuestAccess';
 import { Wordmark } from '@/components/brand';
 import { emailOnlySchema, passwordUpdateSchema, signInSchema, signupSchema, normalizeEmail } from '@/lib/auth/validation';
@@ -95,10 +96,13 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       const verification = new URLSearchParams(window.location.search).get('verification');
       if (verification === 'invalid') setError('That verification link is invalid, expired, or already used. Request a fresh link.');
       if (verification === 'unavailable') setError('We could not verify that link. Check account setup and try again.');
-      const oauth = new URLSearchParams(window.location.search).get('oauth');
-      if (oauth === 'cancelled') setMessage('Google sign-in was cancelled. You can try again or use email and password.');
-      if (oauth === 'error') setError('Google sign-in did not complete. Please try again or use email and password.');
-      if (oauth === 'unavailable') setError('Google sign-in is unavailable in this environment. Check the Supabase provider setup and redirect allow list.');
+      const params = new URLSearchParams(window.location.search);
+      const oauth = params.get('oauth');
+      const provider = parseOAuthProvider(params.get('provider'));
+      const providerName = provider ? oauthProviderLabel(provider) : 'Social';
+      if (oauth === 'cancelled') setMessage(`${providerName} sign-in was cancelled. You can try again or use email and password.`);
+      if (oauth === 'error') setError(`${providerName} sign-in did not complete. Please try again or use email and password.`);
+      if (oauth === 'unavailable') setError(`${providerName} sign-in is unavailable in this environment. Check the Supabase provider setup and redirect allow list.`);
     }
     if (mode === 'signin' && new URLSearchParams(window.location.search).get('password') === 'updated') {
       setMessage('Password updated. Sign in with your new password.');
@@ -193,7 +197,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       {error ? <p role="alert" className="mb-4 rounded-lg border border-accent/30 bg-accent-soft/60 p-3 text-xs leading-relaxed text-accent-deep">{error}</p> : null}
       {(mode === 'signup' || mode === 'signin') && setup?.providerConfigured ? (
         <div className="mb-5">
-          <GoogleOAuthButton next="/app" />
+          <OAuthProviderButtons next="/app" />
           <div className="mt-4 flex items-center gap-3 text-[10px] uppercase tracking-[0.15em] text-ink-mute"><span className="h-px flex-1 bg-line" />or use email<span className="h-px flex-1 bg-line" /></div>
         </div>
       ) : null}

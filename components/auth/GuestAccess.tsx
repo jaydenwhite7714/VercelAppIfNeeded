@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { ArrowRight, LockKeyhole, Sparkles } from 'lucide-react';
-import { GoogleOAuthButton } from '@/components/auth/GoogleOAuthButton';
+import { OAuthProviderButtons } from '@/components/auth/OAuthProviderButtons';
 import { Button } from '@/components/ui';
 import {
   canGuestUseAction,
@@ -154,9 +154,9 @@ export function GuestAccessProvider({ children }: { children: React.ReactNode })
             </div>
             <div className="space-y-4 px-6 py-6 sm:px-8">
               {providerConfigured ? (
-                <GoogleOAuthButton next="/app" className="flex min-h-12 w-full items-center justify-center gap-3 rounded-xl bg-ink px-4 py-3 text-sm font-semibold text-paper transition-colors hover:bg-ink-soft disabled:cursor-wait disabled:opacity-60" />
+                <OAuthProviderButtons next="/app" />
               ) : (
-                <div className="rounded-xl border border-gold/30 bg-gold-soft/50 px-4 py-3 text-xs leading-relaxed text-ink-soft">Google sign-in is not configured in this environment. You can still use Unbilled locally.</div>
+                <div className="rounded-xl border border-gold/30 bg-gold-soft/50 px-4 py-3 text-xs leading-relaxed text-ink-soft">Social sign-in is not configured in this environment. You can still use Unbilled locally.</div>
               )}
               <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.15em] text-ink-mute"><span className="h-px flex-1 bg-line" />or try it locally<span className="h-px flex-1 bg-line" /></div>
               <Button variant="outline" className="w-full justify-center" onClick={continueAsGuest}>Continue as guest <ArrowRight className="h-4 w-4" /></Button>
@@ -173,7 +173,7 @@ export function GuestAccessProvider({ children }: { children: React.ReactNode })
             <p className="mono-label mt-4 text-accent-deep">Guest allowance used</p>
             <h2 id="guest-limit-title" className="mt-2 font-display text-3xl leading-tight tracking-[-0.04em]">Keep your work moving.</h2>
             <p className="mt-2 text-sm leading-relaxed text-ink-mute">You’ve used both guest actions. Your local work is saved in this browser. Sign in to continue; we’ll keep your local copy intact and never overwrite a cloud workspace automatically.</p>
-            {providerConfigured ? <GoogleOAuthButton next="/app" className="mt-5 flex min-h-11 w-full items-center justify-center gap-3 rounded-xl bg-ink px-4 py-2.5 text-sm font-semibold text-paper hover:bg-ink-soft disabled:opacity-60" /> : <Link href="/signin" className="mt-5 block rounded-xl border border-line px-4 py-3 text-center text-sm font-medium">Sign-in setup details</Link>}
+            {providerConfigured ? <div className="mt-5"><OAuthProviderButtons next="/app" /></div> : <Link href="/signin" className="mt-5 block rounded-xl border border-line px-4 py-3 text-center text-sm font-medium">Sign-in setup details</Link>}
             <div className="mt-3 flex items-center justify-center gap-2 text-xs text-ink-mute"><Link href="/signin" className="underline underline-offset-4">Sign in</Link><span>·</span><Link href="/signup" className="underline underline-offset-4">Email signup</Link></div>
             <button type="button" onClick={dismissPrompt} className="mt-5 w-full rounded-lg px-3 py-2 text-xs text-ink-mute underline underline-offset-4 hover:text-ink">Continue browsing (usage stays locked)</button>
           </section>
