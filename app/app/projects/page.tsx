@@ -79,11 +79,11 @@ export default function ProjectsPage() {
 
                   <div className="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3">
                     <div>
-                      <p className="mono-label">absorbed</p>
+                      <p className="mono-label">estimated absorbed</p>
                       <p className="mt-0.5 text-[13px] tnum text-accent-deep">{money(row?.absorbed ?? 0, settings.currency)}</p>
                     </div>
                     <div>
-                      <p className="mono-label">billed</p>
+                      <p className="mono-label">approved</p>
                       <p className="mt-0.5 text-[13px] tnum text-sage">{money(row?.billed ?? 0, settings.currency)}</p>
                     </div>
                     <div>
@@ -110,7 +110,7 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      <ProjectForm open={open} onClose={() => setOpen(false)} />
+      <ProjectForm open={open} onClose={() => setOpen(false)} currency={settings.currency} />
     </>
   );
 }

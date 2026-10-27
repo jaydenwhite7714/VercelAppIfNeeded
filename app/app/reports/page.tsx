@@ -4,11 +4,12 @@ import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, BarChart3, Download, Share2 } from 'lucide-react';
 import { PageHeader } from '@/components/app/AppShell';
-import { Button, Card, EmptyState, SectionLabel, Skeleton, useToast } from '@/components/ui';
+import { Button, Card, copyText, EmptyState, SectionLabel, Skeleton, useToast } from '@/components/ui';
 import { useAsks, useChangeOrders, useProjects, useReadySettings } from '@/lib/hooks';
 import { hoursLabel, money, monthKey } from '@/lib/format';
 import { Wordmark } from '@/components/brand';
 import { cn } from '@/lib/cn';
+import { loggedDecisionCount } from '@/lib/reporting';
 import { toPng } from 'html-to-image';
 
 function monthsBack(count: number) {
@@ -58,12 +59,12 @@ export default function ReportsPage() {
         const projectBilled = (orders ?? [])
           .filter((order) => order.projectId === project.id && order.status === 'approved')
           .reduce((sum, order) => sum + order.total, 0);
-        const contract = (project.budget ?? 0) + projectBilled;
+        const trackedExtras = projectBilled + projectAbsorbed;
         return {
           project,
           absorbed: projectAbsorbed,
           billed: projectBilled,
-          tax: contract + projectAbsorbed > 0 ? projectAbsorbed / (contract + projectAbsorbed) : 0,
+          share: trackedExtras > 0 ? projectAbsorbed / trackedExtras : 0,
         };
       })
       .filter((row) => row.absorbed > 0 || row.billed > 0)
@@ -87,12 +88,13 @@ export default function ReportsPage() {
       biggestProject,
       allTimeAbsorbedValue: allTimeAbsorbed.reduce((sum, ask) => sum + ask.value, 0),
       allTimeBilledValue: (orders ?? []).filter((order) => order.status === 'approved').reduce((sum, order) => sum + order.total, 0),
+      decisions: loggedDecisionCount(asks ?? [], orders ?? [], selected),
     };
   }, [asks, orders, projects, selected, months]);
 
   const activeMonth = months.find((month) => month.key === selected) ?? months[months.length - 1];
   const maxValue = Math.max(1, ...data.series.flatMap((month) => [month.absorbed, month.billed]));
-  const summary = `In ${activeMonth.label.split(' ')[0]} I absorbed ${money(data.absorbedValue, settings?.currency ?? 'USD')} of client work — ${hoursLabel(
+  const summary = `In ${activeMonth.label} I logged an estimated ${money(data.absorbedValue, settings?.currency ?? 'USD')} in absorbed client work — about ${hoursLabel(
     data.absorbedHours,
   )} across ${data.absorbedAsks.length} request${data.absorbedAsks.length === 1 ? '' : 's'}${
     data.biggestProject ? `, the biggest from ${data.biggestProject.clientName}` : ''
@@ -120,14 +122,15 @@ export default function ReportsPage() {
   async function share() {
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'My unbilled work this month', text: summary });
+        await navigator.share({ title: `Scope-change ledger — ${activeMonth.label}`, text: summary });
         return;
-      } catch {
-        /* user cancelled */
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
       }
     }
-    await navigator.clipboard.writeText(summary);
-    push('Summary copied — paste it anywhere.');
+    const copied = await copyText(summary);
+    if (copied) push('Summary copied — paste it anywhere.');
+    else push('Could not copy the summary — select and copy the text manually.', 'error');
   }
 
   const hasData = (asks ?? []).length > 0;
@@ -137,7 +140,7 @@ export default function ReportsPage() {
       <PageHeader
         eyebrow="Leak report"
         title="The number you can act on"
-        description="What you absorbed, what you recovered, and what your rate actually turned out to be. Everything here comes from decisions you logged."
+        description="Amounts for absorbed work use each request’s estimated hours and your saved rate; approved values come from orders marked approved. Hours are not time-tracked and payments are not verified."
         actions={
           <div className="rounded-xl border border-line bg-card px-3 py-2">
             <p className="mono-label">all time</p>
@@ -192,11 +195,11 @@ export default function ReportsPage() {
                       {money(data.absorbedValue, settings.currency)}
                     </p>
                     <p className="mt-1.5 text-[11.5px] text-ink-mute">
-                      {hoursLabel(data.absorbedHours)} · {data.absorbedAsks.length} requests
+                      Estimated {hoursLabel(data.absorbedHours)} · {data.absorbedAsks.length} requests
                     </p>
                   </div>
                   <div className="sm:border-l sm:border-line sm:pl-4">
-                    <p className="mono-label">Recovered</p>
+                    <p className="mono-label">Approved orders</p>
                     <p className="mt-1 font-display text-[clamp(1.9rem,4vw,2.5rem)] leading-none tracking-[-0.04em] tnum text-sage">
                       {money(data.billedValue, settings.currency)}
                     </p>
@@ -207,7 +210,7 @@ export default function ReportsPage() {
                   <div className="sm:border-l sm:border-line sm:pl-4">
                     <p className="mono-label">Decisions</p>
                     <p className="mt-1 font-display text-[clamp(1.9rem,4vw,2.5rem)] leading-none tracking-[-0.04em] tnum">
-                      {data.absorbedAsks.length + data.approvedOrders.length}
+                      {data.decisions}
                     </p>
                     <p className="mt-1.5 text-[11.5px] text-ink-mute">logged this month</p>
                   </div>
@@ -216,9 +219,9 @@ export default function ReportsPage() {
                   <p className="text-[12px] leading-relaxed text-ink-soft">
                     {data.absorbedValue === 0
                       ? 'Nothing absorbed this month. That is either a good month or a quiet one.'
-                      : `At ${money(settings.hourlyRate, settings.currency)}/hour, that is ${hoursLabel(
+                      : `At ${money(settings.hourlyRate, settings.currency)}/hour, that is an estimated ${hoursLabel(
                           data.absorbedValue / Math.max(settings.hourlyRate, 1),
-                        )} of work that did not appear on an invoice.`}
+                        )} of labor value marked as absorbed.`}
                   </p>
                 </div>
               </Card>
@@ -234,7 +237,7 @@ export default function ReportsPage() {
                         type="button"
                         onClick={() => setSelected(month.key)}
                         className="group flex flex-1 flex-col items-center gap-1.5"
-                        title={`${month.label}: ${money(month.absorbed, settings.currency)} absorbed, ${money(month.billed, settings.currency)} billed`}
+                        title={`${month.label}: ${money(month.absorbed, settings.currency)} estimated absorbed value, ${money(month.billed, settings.currency)} in approved orders`}
                       >
                         <div className="flex h-28 w-full items-end justify-center gap-1">
                           <div
@@ -256,7 +259,7 @@ export default function ReportsPage() {
                     <span className="h-2 w-2 rounded-sm bg-accent" /> absorbed
                   </span>
                   <span className="flex items-center gap-1.5 text-[10.5px] text-ink-mute">
-                    <span className="h-2 w-2 rounded-sm bg-sage" /> billed
+                    <span className="h-2 w-2 rounded-sm bg-sage" /> approved
                   </span>
                 </div>
               </Card>
@@ -265,8 +268,8 @@ export default function ReportsPage() {
                 <div className="px-4 pt-4 sm:px-5">
                   <SectionLabel>By client</SectionLabel>
                   <p className="mt-2 text-[11.5px] leading-relaxed text-ink-mute">
-                    “Scope tax” is the share of a project&apos;s value you gave away — absorbed work as a percentage of
-                    fee plus billed work.
+                    “Absorbed share” compares the value of logged absorbed requests with approved change-order value. It is an estimate from
+                    your entries, not a measure of total project revenue or a tax calculation.
                   </p>
                 </div>
                 {data.perProject.length ? (
@@ -276,8 +279,8 @@ export default function ReportsPage() {
                         <tr className="border-y border-line bg-paper/50">
                           <th className="mono-label px-4 py-2 text-left font-medium sm:px-5">Client</th>
                           <th className="mono-label px-3 py-2 text-right font-medium">Absorbed</th>
-                          <th className="mono-label px-3 py-2 text-right font-medium">Billed</th>
-                          <th className="mono-label px-4 py-2 text-right font-medium sm:px-5">Scope tax</th>
+                          <th className="mono-label px-3 py-2 text-right font-medium">Approved</th>
+                          <th className="mono-label px-4 py-2 text-right font-medium sm:px-5">Absorbed share</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -292,7 +295,7 @@ export default function ReportsPage() {
                             <td className="px-3 py-2.5 text-right tnum text-accent-deep">{money(row.absorbed, settings.currency)}</td>
                             <td className="px-3 py-2.5 text-right tnum text-sage">{money(row.billed, settings.currency)}</td>
                             <td className="px-4 py-2.5 text-right tnum sm:px-5">
-                              <span className={row.tax > 0.2 ? 'text-accent-deep' : 'text-ink-soft'}>{Math.round(row.tax * 100)}%</span>
+                              <span className={row.share > 0.2 ? 'text-accent-deep' : 'text-ink-soft'}>{Math.round(row.share * 100)}%</span>
                             </td>
                           </tr>
                         ))}
@@ -319,13 +322,13 @@ export default function ReportsPage() {
                   <span className="mono-label text-paper/40">{activeMonth.label}</span>
                 </div>
                 <div className="mt-8">
-                  <p className="mono-label text-paper/50">Unbilled client work</p>
+                  <p className="mono-label text-paper/50">Estimated absorbed request value</p>
                   <p className="mt-2 font-display text-[clamp(2.6rem,7vw,3.6rem)] leading-none tracking-[-0.045em] tnum">
                     {money(data.absorbedValue, settings.currency)}
                   </p>
                   <p className="mt-2 text-[11.5px] text-paper/60">
-                    {hoursLabel(data.absorbedHours)} · {data.absorbedAsks.length} request{data.absorbedAsks.length === 1 ? '' : 's'}
-                    {data.billedValue > 0 ? ` · ${money(data.billedValue, settings.currency)} recovered` : ''}
+                    Est. {hoursLabel(data.absorbedHours)} · {data.absorbedAsks.length} request{data.absorbedAsks.length === 1 ? '' : 's'}
+                    {data.billedValue > 0 ? ` · ${money(data.billedValue, settings.currency)} approved` : ''}
                   </p>
                 </div>
                 <div className="mt-6 space-y-1.5">

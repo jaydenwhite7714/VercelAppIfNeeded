@@ -1,16 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ArrowRight, Plus, ScanSearch, Sparkles } from 'lucide-react';
 import { analyzeMessage, type AnalyzedAsk } from '@/lib/engine/analyze';
 import type { Ask, Project, Settings, Verdict } from '@/lib/types';
-import { saveAsk, uid } from '@/lib/db';
+import { saveAsk, saveAsks, uid } from '@/lib/db';
 import { SAMPLE_MESSAGES } from '@/lib/engine/parse';
 import { hoursLabel, money } from '@/lib/format';
 import { Button, Card, EmptyState, Field, Input, Select, Textarea, useToast } from '@/components/ui';
 import { VerdictChip } from '@/components/brand';
 import { cn } from '@/lib/cn';
+import { useGuestAccess } from '@/components/auth/GuestAccess';
 
 interface DraftAsk extends AnalyzedAsk {
   included: boolean;
@@ -29,12 +30,17 @@ export function RequestChecker({
   defaultProjectId?: string;
 }) {
   const { push } = useToast();
+  const { tryAction, recordAction } = useGuestAccess();
   const activeProjects = projects.filter((project) => project.status !== 'complete');
   const [projectId, setProjectId] = useState(defaultProjectId ?? activeProjects[0]?.id ?? '');
   const [message, setMessage] = useState('');
   const [drafts, setDrafts] = useState<DraftAsk[] | null>(null);
   const [checking, setChecking] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [manualSaving, setManualSaving] = useState(false);
+  const checkingRef = useRef(false);
+  const savingRef = useRef(false);
+  const manualSavingRef = useRef(false);
   const [added, setAdded] = useState(0);
   const [manual, setManual] = useState(false);
   const [manualTitle, setManualTitle] = useState('');
@@ -53,24 +59,32 @@ export function RequestChecker({
   }, [drafts]);
 
   function check() {
-    if (!project || !message.trim()) return;
+    if (!project || !message.trim() || checkingRef.current || !tryAction()) return;
+    checkingRef.current = true;
     setChecking(true);
     setAdded(0);
     window.setTimeout(() => {
-      const { asks: analyzed } = analyzeMessage(message, {
-        project,
-        rate: project.rate,
-        rushMultiplier: settings.rushMultiplier,
-        existingAsks: asks.filter((existing) => existing.projectId === project.id),
-      });
-      setDrafts(
-        analyzed.map((ask) => ({
-          ...ask,
-          key: uid(),
-          included: ask.verdict !== 'covered',
-        })),
-      );
-      setChecking(false);
+      try {
+        const { asks: analyzed } = analyzeMessage(message, {
+          project,
+          rate: project.rate,
+          rushMultiplier: settings.rushMultiplier,
+          existingAsks: asks.filter((existing) => existing.projectId === project.id),
+        });
+        setDrafts(
+          analyzed.map((ask) => ({
+            ...ask,
+            key: uid(),
+            included: ask.verdict !== 'covered',
+          })),
+        );
+        recordAction();
+      } catch (error) {
+        push(error instanceof Error ? error.message : 'Could not analyze that message.', 'error');
+      } finally {
+        checkingRef.current = false;
+        setChecking(false);
+      }
     }, 340);
   }
 
@@ -79,54 +93,65 @@ export function RequestChecker({
   }
 
   async function addToLedger() {
-    if (!project || !drafts) return;
+    if (!project || !drafts || savingRef.current) return;
     const selected = drafts.filter((draft) => draft.included);
-    if (!selected.length) return;
+    if (!selected.length || !tryAction()) return;
+    savingRef.current = true;
     setSaving(true);
     try {
-      for (const draft of selected) {
-        await saveAsk({
-          projectId: project.id,
-          title: draft.title,
-          sourceText: draft.text,
-          verdict: draft.verdict,
-          confidence: draft.confidence,
-          reasons: draft.reasons,
-          matchedScopeId: draft.matchedScopeId,
-          workLabel: draft.workLabel,
-          hours: draft.hours,
-          value: draft.value,
-          rush: draft.rush,
-        });
-      }
+      await saveAsks(selected.map((draft) => ({
+        projectId: project.id,
+        title: draft.title,
+        sourceText: draft.text,
+        verdict: draft.verdict,
+        confidence: draft.confidence,
+        reasons: draft.reasons,
+        matchedScopeId: draft.matchedScopeId,
+        workLabel: draft.workLabel,
+        hours: draft.hours,
+        value: draft.value,
+        rush: draft.rush,
+      })));
       setAdded(selected.length);
+      recordAction();
       setDrafts(null);
       setMessage('');
       push(`${selected.length} request${selected.length === 1 ? '' : 's'} added to the ledger.`);
-    } catch {
-      push('Could not save the requests. Try again.', 'error');
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not save the requests. Try again.', 'error');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
 
   async function addManual() {
-    if (!project || !manualTitle.trim()) return;
-    await saveAsk({
-      projectId: project.id,
-      title: manualTitle.trim(),
-      sourceText: manualTitle.trim(),
-      verdict: 'extra',
-      confidence: 1,
-      reasons: [{ tone: 'neutral', text: 'Added manually.' }],
-      hours: manualHours,
-      value: Math.round(manualHours * project.rate),
-      rush: false,
-    });
-    push('Request added.');
-    setManualTitle('');
-    setManual(false);
-    setAdded((value) => value + 1);
+    if (!project || !manualTitle.trim() || manualSavingRef.current || !tryAction()) return;
+    manualSavingRef.current = true;
+    setManualSaving(true);
+    try {
+      await saveAsk({
+        projectId: project.id,
+        title: manualTitle.trim(),
+        sourceText: manualTitle.trim(),
+        verdict: 'extra',
+        confidence: 1,
+        reasons: [{ tone: 'neutral', text: 'Added manually.' }],
+        hours: manualHours,
+        value: Math.round(manualHours * project.rate),
+        rush: false,
+      });
+      recordAction();
+      push('Request added.');
+      setManualTitle('');
+      setManual(false);
+      setAdded((value) => value + 1);
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not add the request.', 'error');
+    } finally {
+      manualSavingRef.current = false;
+      setManualSaving(false);
+    }
   }
 
   if (!activeProjects.length) {
@@ -234,8 +259,8 @@ export function RequestChecker({
                   className="tnum"
                 />
               </Field>
-              <Button onClick={addManual} disabled={!manualTitle.trim()} variant="outline">
-                Add
+              <Button onClick={addManual} loading={manualSaving} disabled={!manualTitle.trim()} variant="outline">
+                Add request
               </Button>
             </div>
           </div>
@@ -256,7 +281,7 @@ export function RequestChecker({
                   <p className="mono-label">Found in the message</p>
                   <p className="mt-1 text-[13px]">
                     <span className="font-medium">{totals.count}</span> selected ·{' '}
-                    <span className="tnum">{hoursLabel(totals.hours)}</span> ·{' '}
+                    <span className="tnum">Est. {hoursLabel(totals.hours)}</span> ·{' '}
                     <span className="tnum font-medium">{money(totals.value, settings.currency)}</span> outside your scope
                   </p>
                 </div>

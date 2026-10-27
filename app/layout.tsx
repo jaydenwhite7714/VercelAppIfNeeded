@@ -4,6 +4,7 @@ import '@fontsource-variable/inter-tight';
 import '@fontsource-variable/jetbrains-mono';
 import './globals.css';
 import { ToastProvider } from '@/components/ui';
+import { GuestAccessProvider } from '@/components/auth/GuestAccess';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://unbilled.app'),
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
     template: '%s · Unbilled',
   },
   description:
-    'Paste a client message. Unbilled finds every request hiding inside it, checks it against your agreed scope, prices it at your rate, and writes the reply. No account, no uploads.',
+    'Paste a client message. Unbilled checks it against your scope locally, prices the work, and writes a reply. No account is required; private cloud backups are optional and manual.',
   keywords: [
     'scope creep',
     'freelance scope',
@@ -50,7 +51,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-dvh bg-paper text-ink antialiased">
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          <GuestAccessProvider>{children}</GuestAccessProvider>
+        </ToastProvider>
       </body>
     </html>
   );

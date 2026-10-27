@@ -18,6 +18,7 @@ import { Wordmark } from '@/components/brand';
 import { Skeleton } from '@/components/ui';
 import { useReadySettings } from '@/lib/hooks';
 import { cn } from '@/lib/cn';
+import { useGuestAccess } from '@/components/auth/GuestAccess';
 
 interface NavItem {
   href: string;
@@ -38,6 +39,20 @@ const SECONDARY: NavItem[] = [
   { href: '/app/library', label: 'Reply library', short: 'Library', icon: Quote },
   { href: '/app/settings', label: 'Settings', short: 'Settings', icon: Settings2 },
 ];
+
+// Keep the secondary reply library reachable in the mobile workspace as well.
+const MOBILE_NAV: NavItem[] = [...NAV, SECONDARY[0]];
+
+function GuestUsageBadge() {
+  const { mode, actionsRemaining } = useGuestAccess();
+  if (mode !== 'guest') return null;
+  return (
+    <p className="mt-0 whitespace-nowrap rounded-lg border border-accent/20 bg-accent-soft/50 px-2.5 py-1.5 text-[10.5px] font-medium text-accent-deep lg:mt-2" role="status">
+      <span className="lg:hidden">Guest {actionsRemaining}/2</span>
+      <span className="hidden lg:inline">{actionsRemaining} of 2 guest actions left</span>
+    </p>
+  );
+}
 
 function NavLink({ item, active, onClick }: { item: NavItem; active: boolean; onClick?: () => void }) {
   const Icon = item.icon;
@@ -110,6 +125,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <p className="mt-0.5 truncate text-[11.5px] text-ink-mute">
               {settings.role} · {settings.currency}
             </p>
+            <GuestUsageBadge />
           </div>
         </div>
 
@@ -144,6 +160,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Wordmark />
         </Link>
         <div className="flex items-center gap-2">
+          <GuestUsageBadge />
           <Link
             href="/app/settings"
             className={cn(
@@ -166,14 +183,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper/95 pb-[max(env(safe-area-inset-bottom),0.5rem)] backdrop-blur-md lg:hidden"
         aria-label="Primary"
       >
-        <div className="grid grid-cols-5">
-          {NAV.map((item) => {
+        <div className="grid grid-cols-6">
+          {MOBILE_NAV.map((item) => {
             const Icon = item.icon;
             const active = !!isActive(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={active ? 'page' : undefined}
                 className={cn('flex flex-col items-center gap-1 py-2 text-[10.5px]', active ? 'text-ink' : 'text-ink-mute')}
               >
                 <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.2 : 1.8} />

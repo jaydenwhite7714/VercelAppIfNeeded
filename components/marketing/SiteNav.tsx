@@ -42,6 +42,8 @@ export function SiteNav({ transparent = false }: { transparent?: boolean }) {
           <Link href="/library" className="hidden text-[13.5px] text-ink-soft transition-colors hover:text-ink sm:block">
             Reply library
           </Link>
+          <Link href="/signin" className="hidden text-[13.5px] text-ink-soft transition-colors hover:text-ink lg:block">Sign in</Link>
+          <Link href="/signup" className="hidden md:block"><Button size="sm" variant="outline">Sign up</Button></Link>
           <Link href="/app">
             <Button size="sm" className="hidden sm:inline-flex">
               Open the ledger <ArrowUpRight className="h-3.5 w-3.5" />
@@ -73,12 +75,12 @@ export function SiteNav({ transparent = false }: { transparent?: boolean }) {
               </Link>
             ))}
           </nav>
-          <Link href="/app" onClick={() => setOpen(false)} className="mt-4 block">
-            <Button className="w-full" size="md">
-              Open the ledger <ArrowUpRight className="h-4 w-4" />
-            </Button>
-          </Link>
-          <p className="mono-label mt-4 normal-case tracking-[0.04em]">No account needed · runs in your browser</p>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <Link href="/signup" onClick={() => setOpen(false)}><Button className="w-full" size="md" variant="accent">Create account</Button></Link>
+            <Link href="/app" onClick={() => setOpen(false)}><Button className="w-full" size="md" variant="outline">Open ledger <ArrowUpRight className="h-4 w-4" /></Button></Link>
+          </div>
+          <Link href="/signin" onClick={() => setOpen(false)} className="mt-3 block text-center text-xs text-ink-mute underline underline-offset-4">Already have an account? Sign in</Link>
+          <p className="mono-label mt-4 normal-case tracking-[0.04em]">No account required to use the local workspace</p>
         </div>
       ) : null}
     </header>

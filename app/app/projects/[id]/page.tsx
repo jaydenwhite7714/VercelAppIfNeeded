@@ -7,8 +7,8 @@ import { ArrowLeft, CalendarDays, FileSignature, Link2, Pencil, Plus, Share2, Tr
 import { AskCard } from '@/components/app/AskCard';
 import { DecisionPanel } from '@/components/app/DecisionPanel';
 import { ProjectForm } from '@/components/app/ProjectForm';
-import { Badge, Button, Card, EmptyState, Field, Modal, SectionLabel, Skeleton, Tabs, Textarea, useToast } from '@/components/ui';
-import { deleteProject } from '@/lib/db';
+import { Badge, Button, Card, copyText, EmptyState, Field, Modal, SectionLabel, Select, Skeleton, Tabs, Textarea, useToast } from '@/components/ui';
+import { deleteProject, updateProject } from '@/lib/db';
 import { useAsks, useChangeOrders, useProject, useReadySettings } from '@/lib/hooks';
 import { buildSharedScope, encodeSharedScope, MAX_SHARE_LENGTH, shareUrl } from '@/lib/codec';
 import { formatDate, hoursLabel, money, relativeTime } from '@/lib/format';
@@ -39,6 +39,7 @@ export default function ProjectDetailPage() {
   const [scopeLink, setScopeLink] = useState('');
   const [scopeCopied, setScopeCopied] = useState(false);
   const [scopeNote, setScopeNote] = useState('');
+  const [statusSaving, setStatusSaving] = useState(false);
   const { push } = useToast();
 
   const totals = useMemo(() => {
@@ -74,6 +75,19 @@ export default function ProjectDetailPage() {
     );
   }
 
+  const currentProjectId = project.id;
+  async function changeStatus(status: Project['status']) {
+    setStatusSaving(true);
+    try {
+      await updateProject(currentProjectId, { status });
+      push(`Project marked ${status}.`);
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not update project status.', 'error');
+    } finally {
+      setStatusSaving(false);
+    }
+  }
+
   return (
     <>
       <Link href="/app/projects" className="mb-5 inline-flex items-center gap-1.5 text-[12px] text-ink-mute transition-colors hover:text-ink">
@@ -84,6 +98,19 @@ export default function ProjectDetailPage() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={project.status === 'active' ? 'sage' : project.status === 'paused' ? 'gold' : 'neutral'}>{project.status}</Badge>
+            <label className="sr-only" htmlFor="project-status">Project status</label>
+            <Select
+              id="project-status"
+              aria-label="Project status"
+              value={project.status}
+              disabled={statusSaving}
+              onChange={(event) => void changeStatus(event.target.value as Project['status'])}
+              className="h-8 w-auto min-w-28 text-xs"
+            >
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="complete">Complete</option>
+            </Select>
             <span className="mono-label">created {formatDate(project.createdAt)}</span>
           </div>
           <h1 className="mt-2 text-[clamp(1.6rem,3.4vw,2.1rem)] font-semibold leading-tight tracking-[-0.03em]">{project.name}</h1>
@@ -131,8 +158,8 @@ export default function ProjectDetailPage() {
 
       <div className="mt-5 grid gap-2 sm:grid-cols-4">
         {[
-          { label: 'Absorbed', value: money(totals.absorbed, settings.currency), tone: 'text-accent-deep' },
-          { label: 'Billed & approved', value: money(totals.billed, settings.currency), tone: 'text-sage' },
+          { label: 'Estimated absorbed', value: money(totals.absorbed, settings.currency), tone: 'text-accent-deep' },
+          { label: 'Approved order value', value: money(totals.billed, settings.currency), tone: 'text-sage' },
           { label: 'Out for approval', value: money(totals.pending, settings.currency), tone: 'text-ink' },
           {
             label: 'Delivery',
@@ -286,7 +313,7 @@ export default function ProjectDetailPage() {
         </Button>
       </div>
 
-      <ProjectForm open={editOpen} onClose={() => setEditOpen(false)} project={project} />
+      <ProjectForm open={editOpen} onClose={() => setEditOpen(false)} project={project} currency={settings.currency} />
 
       <Modal
         open={scopeOpen}
@@ -302,11 +329,11 @@ export default function ProjectDetailPage() {
               </Button>
               <Button
                 onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(scopeLink);
+                  const copied = await copyText(scopeLink);
+                  if (copied) {
                     setScopeCopied(true);
                     push('Scope link copied.');
-                  } catch {
+                  } else {
                     push('Could not copy — select the link manually.', 'error');
                   }
                 }}

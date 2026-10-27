@@ -140,7 +140,7 @@ export function ScopeCheckDemo({ compact = false }: { compact?: boolean }) {
                   </p>
                 </div>
                 <p className="max-w-[45%] pb-1 text-right text-[11.5px] leading-snug text-ink-mute">
-                  {result.asks.filter((ask) => ask.verdict !== 'covered').length} requests · {hoursLabel(result.hours)} of
+                  {result.asks.filter((ask) => ask.verdict !== 'covered').length} requests · est. {hoursLabel(result.hours)} of
                   work you would have done for free
                 </p>
               </div>

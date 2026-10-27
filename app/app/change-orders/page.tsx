@@ -36,8 +36,8 @@ export default function ChangeOrdersPage() {
     <>
       <PageHeader
         eyebrow="Change orders"
-        title="Paperwork that pays"
-        description="Every change order has a shareable approval link, a downloadable PDF, and a receipt when the client approves. Nothing to chase in a thread."
+        title="Change orders, on record"
+        description="Draft and share priced change orders, download PDFs, and record the client’s response. Approval status is local; payment is not tracked or verified."
         actions={
           <div className="hidden gap-2 sm:flex">
             <div className="rounded-xl border border-line bg-card px-3 py-2">

@@ -84,6 +84,7 @@ export function useActivity(limit = 8): Activity[] | undefined {
 
 export interface Metrics {
   absorbedThisMonth: number;
+  absorbedCountThisMonth: number;
   billedThisMonth: number;
   pendingValue: number;
   openCount: number;
@@ -108,7 +109,7 @@ export function computeMetrics(projects: Project[], asks: Ask[], orders: ChangeO
   const pendingValue = asks.filter((ask) => ask.status === 'open').reduce((sum, ask) => sum + ask.value, 0);
   const absorbedAllTime = absorbedAsks.reduce((sum, ask) => sum + ask.value, 0);
   const billedAllTime = orders.filter((order) => order.status === 'approved').reduce((sum, order) => sum + order.total, 0);
-  const absorbedHours = absorbedAsks.reduce((sum, ask) => sum + ask.hours, 0);
+  const absorbedHours = absorbedThisMonthAsks.reduce((sum, ask) => sum + ask.hours, 0);
 
   const monthly: Metrics['monthly'] = [];
   for (let i = 5; i >= 0; i -= 1) {
@@ -142,6 +143,7 @@ export function computeMetrics(projects: Project[], asks: Ask[], orders: ChangeO
   const total = absorbedAllTime + billedAllTime;
   return {
     absorbedThisMonth,
+    absorbedCountThisMonth: absorbedThisMonthAsks.length,
     billedThisMonth,
     pendingValue,
     openCount: asks.filter((ask) => ask.status === 'open').length,

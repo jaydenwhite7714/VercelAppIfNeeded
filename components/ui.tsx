@@ -191,21 +191,60 @@ export function Modal({
   wide?: boolean;
 }) {
   const [mounted, setMounted] = React.useState(false);
+  const dialogTitleId = React.useId();
+  const dialogDescriptionId = React.useId();
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const onCloseRef = React.useRef(onClose);
   React.useEffect(() => setMounted(true), []);
+  React.useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   React.useEffect(() => {
     if (!open) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusableElements = () => Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ) ?? []).filter((element) => !element.hidden && element.getAttribute('aria-hidden') !== 'true' && element.getClientRects().length > 0);
+    const focusFrame = window.requestAnimationFrame(() => (focusableElements()[0] ?? dialogRef.current)?.focus());
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const elements = focusableElements();
+      if (!elements.length) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      const dialog = dialogRef.current;
+      const active = document.activeElement;
+      if (dialog && active && !dialog.contains(active)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && (active === first || active === dialog)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', onKey);
-    const previous = document.body.style.overflow;
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previous;
+      document.body.style.overflow = previousOverflow;
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!mounted) return null;
 
@@ -214,6 +253,7 @@ export function Modal({
       {open ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6">
           <motion.div
+            aria-hidden="true"
             className="absolute inset-0 bg-ink/35 backdrop-blur-[2px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -221,9 +261,12 @@ export function Modal({
             onClick={onClose}
           />
           <motion.div
+            ref={dialogRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
-            aria-label={title}
+            aria-labelledby={dialogTitleId}
+            aria-describedby={description ? dialogDescriptionId : undefined}
             initial={{ opacity: 0, y: 28, scale: 0.99 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 16, scale: 0.99 }}
@@ -235,8 +278,8 @@ export function Modal({
           >
             <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6">
               <div>
-                <h2 className="text-[20px] leading-tight">{title}</h2>
-                {description ? <p className="mt-1 text-[13px] leading-relaxed text-ink-mute">{description}</p> : null}
+                <h2 id={dialogTitleId} className="text-[20px] leading-tight">{title}</h2>
+                {description ? <p id={dialogDescriptionId} className="mt-1 text-[13px] leading-relaxed text-ink-mute">{description}</p> : null}
               </div>
               <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close dialog">
                 <X className="h-4 w-4" />
@@ -274,7 +317,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ push }}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 left-1/2 z-[60] flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 flex-col gap-2 sm:left-auto sm:right-5 sm:translate-x-0">
+      <div role="region" aria-label="Notifications" className="pointer-events-none fixed bottom-4 left-1/2 z-[60] flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 flex-col gap-2 sm:left-auto sm:right-5 sm:translate-x-0">
         <AnimatePresence>
           {toasts.map((toast) => (
             <motion.div
@@ -282,6 +325,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               initial={{ opacity: 0, y: 12, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              role={toast.tone === 'error' ? 'alert' : 'status'}
+              aria-atomic="true"
               className={cn(
                 'pointer-events-auto rounded-xl border px-3.5 py-2.5 text-[13px] shadow-[var(--shadow-lift)]',
                 toast.tone === 'error' ? 'border-accent/30 bg-accent-soft text-accent-deep' : 'border-ink bg-ink text-paper',
@@ -307,18 +352,23 @@ export async function copyText(text: string): Promise<boolean> {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('aria-hidden', 'true');
+    area.tabIndex = -1;
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
     try {
-      const area = document.createElement('textarea');
-      area.value = text;
-      area.style.position = 'fixed';
-      area.style.opacity = '0';
-      document.body.appendChild(area);
+      area.focus({ preventScroll: true });
       area.select();
-      const ok = document.execCommand('copy');
-      document.body.removeChild(area);
-      return ok;
+      return document.execCommand('copy');
     } catch {
       return false;
+    } finally {
+      area.remove();
+      active?.focus({ preventScroll: true });
     }
   }
 }

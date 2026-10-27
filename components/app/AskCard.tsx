@@ -58,7 +58,7 @@ export function AskCard({
           <div className="min-w-0">
             <p className={cn('font-medium leading-snug text-ink', compact ? 'text-[13px]' : 'text-[13.5px]')}>{ask.title}</p>
             <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11.5px] text-ink-mute">
-              <span className="tnum">{hoursLabel(ask.hours)}</span>
+              <span className="tnum">Est. {hoursLabel(ask.hours)}</span>
               <span aria-hidden>·</span>
               <span className="tnum">{money(ask.value, settings.currency)}</span>
               <span aria-hidden>·</span>
@@ -124,7 +124,7 @@ export function AskCard({
         >
           <MessageSquareText className="h-3 w-3" /> {expanded ? 'Hide message' : 'Message'}
         </button>
-        {ask.status === 'billed' && ask.changeOrderId ? (
+        {ask.changeOrderId ? (
           <Link href={`/app/change-orders/${ask.changeOrderId}`} className="inline-flex items-center gap-1 text-[11px] font-medium text-sage">
             <FileSignature className="h-3 w-3" /> View change order
           </Link>

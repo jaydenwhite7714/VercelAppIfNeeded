@@ -40,7 +40,7 @@ export function SiteFooter() {
               lose the money.
             </p>
             <p className="mono-label mt-5 normal-case tracking-[0.04em] text-ink-mute">
-              Built local-first. No accounts, no tracking, no server-side client data.
+              Built local-first. Accounts are optional; only private backup snapshots are stored with opt-in.
             </p>
           </div>
           {columns.map((column) => (

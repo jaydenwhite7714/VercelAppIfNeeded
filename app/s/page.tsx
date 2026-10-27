@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, ArrowRight, Check, Mail, ShieldCheck, X } from 'lucide-react';
 import { decodeSharedScope, type SharedScope } from '@/lib/codec';
-import { Button, Card, CopyButton, Skeleton } from '@/components/ui';
+import { Button, Card, copyText, CopyButton, Skeleton, useToast } from '@/components/ui';
 import { Wordmark } from '@/components/brand';
 import { formatDate } from '@/lib/format';
 
@@ -13,6 +13,7 @@ type State = { status: 'loading' } | { status: 'empty' } | { status: 'corrupted'
 export default function SharedScopePage() {
   const [state, setState] = useState<State>({ status: 'loading' });
   const [copied, setCopied] = useState(false);
+  const { push } = useToast();
 
   useEffect(() => {
     const hash = window.location.hash.replace(/^#/, '');
@@ -32,7 +33,7 @@ export default function SharedScopePage() {
         <div className="mx-auto flex max-w-2xl items-center justify-between px-5 py-3.5">
           <Wordmark />
           <span className="mono-label flex items-center gap-1.5">
-            <ShieldCheck className="h-3 w-3 text-sage" /> private link
+            <ShieldCheck className="h-3 w-3 text-sage" /> shared scope
           </span>
         </div>
       </header>
@@ -63,6 +64,9 @@ export default function SharedScopePage() {
             <p className="mt-1.5 text-[13px] text-ink-mute">
               Prepared for {scope!.clientName} by {scope!.fromBusiness || scope!.fromName} ·{' '}
               {scope!.dueDate ? `delivery ${formatDate(scope!.dueDate, { year: undefined })}` : formatDate(scope!.issuedAt)}
+            </p>
+            <p role="note" className="mt-3 rounded-lg border border-gold/30 bg-gold-soft/40 px-3 py-2.5 text-[11.5px] leading-relaxed text-ink-soft">
+              This scope is carried in the link itself, not encrypted or access-controlled. Anyone with the URL can view it; share it only with intended recipients.
             </p>
 
             <Card className="mt-5 overflow-hidden">
@@ -155,11 +159,15 @@ export default function SharedScopePage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(`${scope!.projectName} — agreed scope, prepared by ${scope!.fromBusiness || scope!.fromName}`);
+                onClick={async () => {
+                  const ok = await copyText(`${scope!.projectName} — agreed scope, prepared by ${scope!.fromBusiness || scope!.fromName}`);
+                  if (ok) {
                     setCopied(true);
                     window.setTimeout(() => setCopied(false), 1800);
-                  }}
+                  } else {
+                    push('Could not access the clipboard — select the text and copy manually.', 'error');
+                  }
+                }}
                 >
                   {copied ? 'Copied' : 'Copy summary'}
                 </Button>

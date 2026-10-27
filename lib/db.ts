@@ -1,10 +1,12 @@
 'use client';
 
 import Dexie, { type Table } from 'dexie';
-import type { Activity, Ask, AskStatus, ChangeOrder, Project, Settings, ScopeItem } from './types';
+import { CURRENCIES, type Activity, type Ask, type AskStatus, type ChangeOrder, type Project, type Settings, type ScopeItem } from './types';
 import { draftFor, type Decision } from './scripts';
 import { addBusinessDays } from './format';
 import { DEMO_SCOPE } from './demo';
+import { parseWorkspace, type WorkspaceExport } from './workspace-schema';
+export { MAX_WORKSPACE_BYTES, parseWorkspace, validateWorkspace, type WorkspaceExport } from './workspace-schema';
 
 export class UnbilledDB extends Dexie {
   settings!: Table<Settings, string>;
@@ -67,15 +69,33 @@ export async function getSettings(): Promise<Settings | undefined> {
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
   const db = getDb();
   if (!db) throw new Error('Storage unavailable');
-  const existing = (await db.settings.get('settings')) ?? emptySettings();
-  const next: Settings = { ...existing, ...patch, id: 'settings', updatedAt: Date.now() };
-  await db.settings.put(next);
-  return next;
+  if (patch.hourlyRate !== undefined && (!Number.isFinite(patch.hourlyRate) || patch.hourlyRate <= 0)) throw new Error('Hourly rate must be a positive number.');
+  if (patch.includedRevisions !== undefined && (!Number.isInteger(patch.includedRevisions) || patch.includedRevisions < 0)) throw new Error('Included revisions must be a non-negative whole number.');
+  if (patch.rushMultiplier !== undefined && (!Number.isFinite(patch.rushMultiplier) || patch.rushMultiplier < 1)) throw new Error('Rush multiplier must be at least 1.');
+  if (patch.currency !== undefined && !CURRENCIES.some((option) => option.code === patch.currency)) throw new Error('Choose a supported currency.');
+  if (patch.tone !== undefined && !['warm', 'firm', 'formal'].includes(patch.tone)) throw new Error('Choose a supported reply tone.');
+  if (patch.email !== undefined && !validOptionalEmail(patch.email)) throw new Error('Enter a valid business email, or leave it blank.');
+  return db.transaction('rw', db.settings, db.projects, db.asks, db.changeOrders, async () => {
+    const existing = (await db.settings.get('settings')) ?? emptySettings();
+    if (patch.currency !== undefined && patch.currency !== existing.currency) {
+      const [projectCount, askCount, orderCount] = await Promise.all([
+        db.projects.count(),
+        db.asks.count(),
+        db.changeOrders.count(),
+      ]);
+      if (projectCount + askCount + orderCount > 0) {
+        throw new Error('Currency cannot be changed after you have logged project data. Unbilled does not convert amounts, so changing it would relabel your existing values.');
+      }
+    }
+    const next: Settings = { ...existing, ...patch, id: 'settings', updatedAt: Date.now() };
+    await db.settings.put(next);
+    return next;
+  });
 }
 
 export async function logActivity(entry: Omit<Activity, 'id' | 'at'> & { at?: number }): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   await db.activity.put({ id: uid(), at: entry.at ?? Date.now(), ...entry });
 }
 
@@ -94,9 +114,33 @@ export interface NewProjectInput {
   notes?: string;
 }
 
+function validDateOnly(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function validOptionalEmail(value: string | undefined): boolean {
+  return !value?.trim() || /^[^\s@]+@[^\s@]+$/.test(value.trim());
+}
+
 export async function createProject(input: NewProjectInput): Promise<Project> {
   const db = getDb();
   if (!db) throw new Error('Storage unavailable');
+  if (!input.name.trim() || !input.clientName.trim()) throw new Error('A project needs a name and a client.');
+  if (!validOptionalEmail(input.clientEmail)) throw new Error('Enter a valid client email, or leave it blank.');
+  if (!Number.isFinite(input.rate) || input.rate <= 0) throw new Error('Project rate must be a positive number.');
+  if (!validDateOnly(input.startDate)) throw new Error('Enter a valid project start date.');
+  if (input.dueDate !== undefined && !validDateOnly(input.dueDate)) throw new Error('Enter a valid delivery date.');
+  if (input.dueDate && input.dueDate < input.startDate) throw new Error('Delivery date cannot be before the project start date.');
+  if (input.budget !== undefined && (!Number.isFinite(input.budget) || input.budget < 0)) throw new Error('Project budget must be a valid non-negative number.');
+  if (!Number.isInteger(input.revisionRounds) || input.revisionRounds < 0) throw new Error('Revision rounds must be a non-negative whole number.');
+  const hasInvalidScopeItem = input.scope.some((item) => {
+    const invalidHours = item.hours !== undefined && (!Number.isFinite(item.hours) || item.hours < 0);
+    const invalidQuantity = item.qty !== undefined && (!Number.isFinite(item.qty) || item.qty <= 0);
+    return !item.label.trim() || invalidHours || invalidQuantity;
+  });
+  if (hasInvalidScopeItem) throw new Error('Scope items need a label and valid quantity and hour values.');
   const now = Date.now();
   const project: Project = {
     id: uid(),
@@ -105,20 +149,48 @@ export async function createProject(input: NewProjectInput): Promise<Project> {
     updatedAt: now,
     ...input,
   };
-  await db.projects.put(project);
-  await logActivity({ type: 'project', message: `Project “${project.name}” created for ${project.clientName}.`, projectId: project.id });
+  await db.transaction('rw', db.projects, db.activity, async () => {
+    await db.projects.add(project);
+    await db.activity.add({
+      id: uid(), at: now, type: 'project',
+      message: `Project “${project.name}” created for ${project.clientName}.`, projectId: project.id,
+    });
+  });
   return project;
 }
 
 export async function updateProject(id: string, patch: Partial<Project>): Promise<void> {
   const db = getDb();
-  if (!db) return;
-  await db.projects.update(id, { ...patch, updatedAt: Date.now() });
+  if (!db) throw new Error('Storage unavailable');
+  const editable = ['name', 'clientName', 'clientEmail', 'rate', 'budget', 'startDate', 'dueDate', 'revisionRounds', 'scope', 'notes', 'status'] as const;
+  if (Object.keys(patch).some((key) => !editable.includes(key as (typeof editable)[number]))) throw new Error('This project field cannot be changed.');
+  if (patch.name !== undefined && !patch.name.trim()) throw new Error('A project needs a name.');
+  if (patch.clientName !== undefined && !patch.clientName.trim()) throw new Error('A project needs a client.');
+  if (patch.clientEmail !== undefined && !validOptionalEmail(patch.clientEmail)) throw new Error('Enter a valid client email, or leave it blank.');
+  if (patch.rate !== undefined && (!Number.isFinite(patch.rate) || patch.rate <= 0)) throw new Error('Project rate must be a positive number.');
+  if (patch.budget !== undefined && (!Number.isFinite(patch.budget) || patch.budget < 0)) throw new Error('Project budget must be a valid non-negative number.');
+  if (patch.revisionRounds !== undefined && (!Number.isInteger(patch.revisionRounds) || patch.revisionRounds < 0)) throw new Error('Revision rounds must be a non-negative whole number.');
+  if (patch.status !== undefined && !['active', 'paused', 'complete'].includes(patch.status)) throw new Error('Choose a supported project status.');
+  if (patch.startDate !== undefined && !validDateOnly(patch.startDate)) throw new Error('Enter a valid project start date.');
+  if (patch.dueDate !== undefined && !validDateOnly(patch.dueDate)) throw new Error('Enter a valid delivery date.');
+  if (patch.scope?.some((item) => !item.label.trim()
+    || (item.hours !== undefined && (!Number.isFinite(item.hours) || item.hours < 0))
+    || (item.qty !== undefined && (!Number.isFinite(item.qty) || item.qty <= 0)))) {
+    throw new Error('Scope items need a label and valid quantity and hour values.');
+  }
+  await db.transaction('rw', db.projects, async () => {
+    const existing = await db.projects.get(id);
+    if (!existing) throw new Error('Project not found.');
+    const nextStartDate = patch.startDate ?? existing.startDate;
+    const nextDueDate = Object.prototype.hasOwnProperty.call(patch, 'dueDate') ? patch.dueDate : existing.dueDate;
+    if (nextDueDate && nextDueDate < nextStartDate) throw new Error('Delivery date cannot be before the project start date.');
+    await db.projects.update(id, { ...patch, updatedAt: Date.now() });
+  });
 }
 
 export async function deleteProject(id: string): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   await db.transaction('rw', db.projects, db.asks, db.changeOrders, db.activity, async () => {
     await db.asks.where('projectId').equals(id).delete();
     await db.changeOrders.where('projectId').equals(id).delete();
@@ -143,28 +215,42 @@ export interface NewAskInput {
   rush: boolean;
 }
 
-export async function saveAsk(input: NewAskInput): Promise<Ask> {
+function validateNewAskInput(input: NewAskInput): void {
+  if (!input.title.trim() || !input.sourceText.trim()) throw new Error('A request needs a title and the client message.');
+  if (!Number.isFinite(input.hours) || input.hours < 0 || !Number.isFinite(input.value) || input.value < 0) throw new Error('Estimated hours and value must be valid non-negative numbers.');
+  if (!Number.isFinite(input.confidence) || input.confidence < 0 || input.confidence > 1) throw new Error('Confidence must be between 0 and 1.');
+}
+
+export async function saveAsks(inputs: NewAskInput[]): Promise<Ask[]> {
   const db = getDb();
   if (!db) throw new Error('Storage unavailable');
-  const ask: Ask = {
-    id: uid(),
-    status: 'open',
-    createdAt: Date.now(),
-    ...input,
-  };
-  await db.asks.put(ask);
+  if (inputs.length === 0) return [];
+  inputs.forEach(validateNewAskInput);
+  const createdAt = Date.now();
+  const asks = inputs.map((input) => ({ id: uid(), status: 'open' as const, createdAt, ...input }));
+  await db.transaction('rw', db.projects, db.asks, async () => {
+    const projectIds = [...new Set(asks.map((ask) => ask.projectId))];
+    const projects = await db.projects.bulkGet(projectIds);
+    if (projects.some((project) => !project)) throw new Error('A selected project no longer exists. No requests were saved.');
+    await db.asks.bulkAdd(asks);
+  });
+  return asks;
+}
+
+export async function saveAsk(input: NewAskInput): Promise<Ask> {
+  const [ask] = await saveAsks([input]);
   return ask;
 }
 
 export async function updateAsk(id: string, patch: Partial<Ask>): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   await db.asks.update(id, patch);
 }
 
 export async function deleteAsk(id: string): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   await db.asks.delete(id);
 }
 
@@ -181,127 +267,175 @@ export async function decideAsk(
 ): Promise<DecisionResult> {
   const db = getDb();
   if (!db) throw new Error('Storage unavailable');
-  const ask = await db.asks.get(askId);
-  if (!ask) throw new Error('Request not found');
-  const project = await db.projects.get(ask.projectId);
-  if (!project) throw new Error('Project not found');
+  const statusMap: Record<Decision, AskStatus> = { absorb: 'absorbed', bill: 'billed', decline: 'declined', clarify: 'clarified' };
 
-  const hours = options.hours ?? ask.hours;
-  const value = options.value ?? ask.value;
-  const statusMap: Record<Decision, AskStatus> = {
-    absorb: 'absorbed',
-    bill: 'billed',
-    decline: 'declined',
-    clarify: 'clarified',
-  };
+  return db.transaction('rw', db.projects, db.asks, db.changeOrders, db.activity, async () => {
+    const ask = await db.asks.get(askId);
+    if (!ask) throw new Error('Request not found');
+    const project = await db.projects.get(ask.projectId);
+    if (!project) throw new Error('Project not found');
 
-  let changeOrder: ChangeOrder | undefined;
-  const now = Date.now();
+    if (ask.status === statusMap[decision]) {
+      const existingOrder = decision === 'bill' && ask.changeOrderId ? await db.changeOrders.get(ask.changeOrderId) : undefined;
+      return { ask, changeOrder: existingOrder };
+    }
+    if (ask.status === 'billed' && ask.changeOrderId) {
+      throw new Error('This request already has a change order. Delete that draft first if you need to change the decision.');
+    }
 
-  if (decision === 'bill') {
-    const existing = await db.changeOrders.where('projectId').equals(project.id).toArray();
-    const number = `CO-${String(existing.length + 1).padStart(3, '0')}`;
-    changeOrder = {
-      id: uid(),
-      number,
-      projectId: project.id,
-      askIds: [ask.id],
-      title: ask.title,
-      summary: `Additional work requested by ${project.clientName}, outside the scope agreed for ${project.name}.`,
-      items: [{ id: uid(), description: ask.title, hours, rate: project.rate, amount: value }],
-      total: value,
-      currency: settings.currency,
-      timelineImpact: options.timelineDays
-        ? `Delivery moves ${options.timelineDays} business day${options.timelineDays === 1 ? '' : 's'}, to ${addBusinessDays(project.dueDate ?? new Date().toISOString().slice(0, 10), options.timelineDays)}.`
-        : `Additional work scheduled alongside the current plan; delivery date confirmed on approval.`,
-      terms: settings.terms,
-      status: 'draft',
-      validUntil: new Date(now + 14 * 86400000).toISOString().slice(0, 10),
-      createdAt: now,
-      updatedAt: now,
+    const hours = options.hours ?? ask.hours;
+    const value = options.value ?? ask.value;
+    if (!Number.isFinite(hours) || hours < 0 || !Number.isFinite(value) || value < 0) throw new Error('Hours and amount must be valid non-negative numbers.');
+
+    const now = Date.now();
+    let changeOrder: ChangeOrder | undefined;
+    if (decision === 'bill') {
+      const [existing, history] = await Promise.all([
+        db.changeOrders.where('projectId').equals(project.id).toArray(),
+        db.activity.where('projectId').equals(project.id).toArray(),
+      ]);
+      const largestNumber = Math.max(
+        ...existing.map((order) => Number(order.number.match(/^CO-(\d+)$/i)?.[1] ?? 0)),
+        ...history.map((entry) => Number(entry.message.match(/\bCO-(\d+)\b/i)?.[1] ?? 0)),
+        0,
+      );
+      changeOrder = {
+        id: uid(), number: `CO-${String(largestNumber + 1).padStart(3, '0')}`,
+        projectId: project.id, askIds: [ask.id], title: ask.title,
+        summary: `Additional work requested by ${project.clientName}, outside the scope agreed for ${project.name}.`,
+        items: [{ id: uid(), description: ask.title, hours, rate: project.rate, amount: value }],
+        total: value, currency: settings.currency,
+        timelineImpact: options.timelineDays
+          ? `Delivery moves ${options.timelineDays} business day${options.timelineDays === 1 ? '' : 's'}, to ${addBusinessDays(project.dueDate ?? new Date().toISOString().slice(0, 10), options.timelineDays)}.`
+          : 'Additional work scheduled alongside the current plan; delivery date confirmed on approval.',
+        terms: settings.terms, status: 'draft', validUntil: new Date(now + 14 * 86400000).toISOString().slice(0, 10), createdAt: now, updatedAt: now,
+      };
+      await db.changeOrders.add(changeOrder);
+    }
+
+    const nextAsk: Ask = { ...ask, status: statusMap[decision], hours, value, changeOrderId: changeOrder?.id, decidedAt: now };
+    await db.asks.put(nextAsk);
+    const messages: Record<Decision, string> = {
+      absorb: `Absorbed “${ask.title}” for ${project.clientName}.`,
+      bill: `Drafted ${changeOrder?.number} for “${ask.title}” for ${project.clientName}; it has not been sent yet.`,
+      decline: `Declined “${ask.title}” for ${project.clientName}.`,
+      clarify: `Held “${ask.title}” pending scope confirmation.`,
     };
-    await db.changeOrders.put(changeOrder);
-  }
-
-  const nextAsk: Ask = {
-    ...ask,
-    status: statusMap[decision],
-    hours,
-    value,
-    changeOrderId: changeOrder?.id,
-    decidedAt: now,
-  };
-  await db.asks.put(nextAsk);
-
-  const messages: Record<Decision, string> = {
-    absorb: `Absorbed “${ask.title}” for ${project.clientName}.`,
-    bill: `Billed “${ask.title}” to ${project.clientName} as ${changeOrder?.number}.`,
-    decline: `Declined “${ask.title}” for ${project.clientName}.`,
-    clarify: `Held “${ask.title}” pending scope confirmation.`,
-  };
-  await logActivity({
-    type: decision === 'bill' ? 'billed' : decision === 'absorb' ? 'absorbed' : decision === 'decline' ? 'declined' : 'clarified',
-    message: messages[decision],
-    amount: decision === 'decline' ? 0 : value,
-    projectId: project.id,
+    await db.activity.put({
+      id: uid(), at: now,
+      type: decision === 'bill' ? 'change-order' : decision === 'absorb' ? 'absorbed' : decision === 'decline' ? 'declined' : 'clarified',
+      message: messages[decision], amount: decision === 'decline' ? 0 : value, projectId: project.id,
+    });
+    return { ask: nextAsk, changeOrder };
   });
-
-  return { ask: nextAsk, changeOrder };
 }
 
 /* -------------------------------------------------------------- change orders */
 
 export async function markChangeOrderSent(id: string): Promise<void> {
   const db = getDb();
-  if (!db) return;
-  const order = await db.changeOrders.get(id);
-  if (!order) return;
-  await db.changeOrders.update(id, { status: 'sent', sentAt: Date.now(), updatedAt: Date.now() });
-  await logActivity({ type: 'change-order', message: `${order.number} marked as sent.`, projectId: order.projectId, amount: order.total });
+  if (!db) throw new Error('Storage unavailable');
+  await db.transaction('rw', db.changeOrders, db.activity, async () => {
+    const order = await db.changeOrders.get(id);
+    if (!order || order.status !== 'draft') return;
+    const now = Date.now();
+    await db.changeOrders.update(id, { status: 'sent', sentAt: now, updatedAt: now });
+    await db.activity.put({ id: uid(), at: now, type: 'change-order', message: `${order.number} marked as sent.`, projectId: order.projectId, amount: order.total });
+  });
 }
 
-export async function markChangeOrderApproved(id: string, approvedBy: string, approvalId?: string): Promise<void> {
+export async function markChangeOrderApproved(id: string, approvedBy: string, approvalId?: string, approvedAt?: number): Promise<void> {
   const db = getDb();
-  if (!db) return;
-  const order = await db.changeOrders.get(id);
-  if (!order) return;
-  await db.changeOrders.update(id, {
-    status: 'approved',
-    approvedAt: Date.now(),
-    approvedBy,
-    approvalId,
-    updatedAt: Date.now(),
+  if (!db) throw new Error('Storage unavailable');
+  await db.transaction('rw', db.changeOrders, db.activity, async () => {
+    const order = await db.changeOrders.get(id);
+    if (!order || order.status === 'approved') return;
+    if (order.status !== 'sent' && order.status !== 'draft') throw new Error('Only an active change order can be marked approved.');
+    const now = Date.now();
+    const approvalTime = approvedAt !== undefined && Number.isFinite(approvedAt) ? approvedAt : now;
+    await db.changeOrders.update(id, { status: 'approved', approvedAt: approvalTime, approvedBy, approvalId, updatedAt: now });
+    await db.activity.put({
+      id: uid(), at: now, type: 'approved',
+      message: `${order.number} recorded as approved by ${approvedBy || 'client'} — ${order.currency} ${order.total.toLocaleString('en-US')}.`,
+      projectId: order.projectId, amount: order.total,
+    });
   });
-  await logActivity({
-    type: 'approved',
-    message: `${order.number} approved by ${approvedBy || 'client'} — ${order.currency} ${order.total.toLocaleString('en-US')} added.`,
-    projectId: order.projectId,
-    amount: order.total,
+}
+
+export async function markChangeOrderDeclined(id: string): Promise<void> {
+  const db = getDb();
+  if (!db) throw new Error('Storage unavailable');
+  await db.transaction('rw', db.changeOrders, db.asks, db.activity, async () => {
+    const order = await db.changeOrders.get(id);
+    if (!order || order.status === 'approved' || order.status === 'declined') return;
+    const now = Date.now();
+    await db.changeOrders.update(id, { status: 'declined', updatedAt: now });
+    for (const askId of order.askIds) await db.asks.update(askId, { status: 'declined', decidedAt: now });
+    await db.activity.put({ id: uid(), at: now, type: 'declined', message: `${order.number} marked as declined.`, projectId: order.projectId, amount: 0 });
   });
 }
 
 export async function updateChangeOrder(id: string, patch: Partial<ChangeOrder>): Promise<void> {
   const db = getDb();
-  if (!db) return;
-  await db.changeOrders.update(id, { ...patch, updatedAt: Date.now() });
+  if (!db) throw new Error('Storage unavailable');
+
+  const editableFields = ['title', 'summary', 'timelineImpact', 'validUntil', 'items', 'total'] as const;
+  if (Object.keys(patch).some((key) => !editableFields.includes(key as (typeof editableFields)[number]))) {
+    throw new Error('Only the draft description, timeline, expiry, and priced line items can be edited.');
+  }
+
+  await db.transaction('rw', db.changeOrders, async () => {
+    const order = await db.changeOrders.get(id);
+    if (!order) throw new Error('Change order not found.');
+    if (order.status !== 'draft') throw new Error('Only draft change orders can be edited. Sent or approved records are kept unchanged.');
+
+    if (patch.title !== undefined && !patch.title.trim()) throw new Error('A change order needs a title.');
+    if (patch.summary !== undefined && !patch.summary.trim()) throw new Error('A change order needs a summary.');
+    if (patch.timelineImpact !== undefined && !patch.timelineImpact.trim()) throw new Error('A change order needs a timeline note.');
+    if (patch.validUntil !== undefined) {
+      const expiry = new Date(`${patch.validUntil}T00:00:00.000Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(patch.validUntil) || Number.isNaN(expiry.getTime()) || expiry.toISOString().slice(0, 10) !== patch.validUntil) {
+        throw new Error('Enter a valid change-order expiry date.');
+      }
+    }
+
+    if (patch.items !== undefined || patch.total !== undefined) {
+      const items = patch.items;
+      if (!items?.length) throw new Error('A change order needs at least one line item.');
+      const ids = new Set(items.map((item) => item.id));
+      if (ids.size !== items.length || items.some((item) => !item.id.trim() || !item.description.trim()
+        || !Number.isFinite(item.hours) || item.hours < 0
+        || !Number.isFinite(item.rate) || item.rate < 0
+        || !Number.isFinite(item.amount) || item.amount !== Math.round(item.hours * item.rate))) {
+        throw new Error('Each line item needs a description and valid hours, rate, and calculated amount.');
+      }
+      const calculatedTotal = items.reduce((sum, item) => sum + item.amount, 0);
+      if (!Number.isFinite(calculatedTotal) || patch.total !== calculatedTotal) {
+        throw new Error('The total must equal the sum of the line items. Recheck the hours and rates.');
+      }
+    }
+
+    await db.changeOrders.update(id, { ...patch, updatedAt: Date.now() });
+  });
 }
 
 export async function deleteChangeOrder(id: string): Promise<void> {
   const db = getDb();
-  if (!db) return;
-  const order = await db.changeOrders.get(id);
-  if (!order) return;
-  await db.changeOrders.delete(id);
-  for (const askId of order.askIds) {
-    await db.asks.update(askId, { status: 'open', changeOrderId: undefined });
-  }
+  if (!db) throw new Error('Storage unavailable');
+  await db.transaction('rw', db.changeOrders, db.asks, async () => {
+    const order = await db.changeOrders.get(id);
+    if (!order) return;
+    if (order.status !== 'draft') throw new Error('Only draft change orders can be deleted. Sent, approved, or declined records are preserved in your ledger.');
+    await db.changeOrders.delete(id);
+    for (const askId of order.askIds) await db.asks.update(askId, { status: 'open', changeOrderId: undefined });
+  });
 }
 
 /* ------------------------------------------------------------- demo workspace */
 
 export async function seedDemoWorkspace(): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   const existingSettings = await db.settings.get('settings');
   const alreadySeeded = (await db.projects.toArray()).some((project) => project.name === 'Halcyon Coffee — brand & site');
   if (alreadySeeded) return;
@@ -397,17 +531,6 @@ export async function seedDemoWorkspace(): Promise<void> {
 
 /* ------------------------------------------------------------ import / export */
 
-export interface WorkspaceExport {
-  app: 'unbilled';
-  version: 1;
-  exportedAt: string;
-  settings: Settings | null;
-  projects: Project[];
-  asks: Ask[];
-  changeOrders: ChangeOrder[];
-  activity: Activity[];
-}
-
 export async function exportWorkspace(): Promise<WorkspaceExport> {
   const db = getDb();
   if (!db) throw new Error('Storage unavailable');
@@ -430,28 +553,24 @@ export async function exportWorkspace(): Promise<WorkspaceExport> {
   };
 }
 
-export function validateWorkspace(data: unknown): data is WorkspaceExport {
-  if (!data || typeof data !== 'object') return false;
-  const candidate = data as Partial<WorkspaceExport>;
-  return candidate.app === 'unbilled' && Array.isArray(candidate.projects) && Array.isArray(candidate.asks) && Array.isArray(candidate.changeOrders);
-}
-
 export async function importWorkspace(data: WorkspaceExport): Promise<void> {
+  const cleanWorkspace = parseWorkspace(data);
+  if (!cleanWorkspace) throw new Error('This backup is invalid or incompatible. Your existing workspace was not changed.');
   const db = getDb();
   if (!db) throw new Error('Storage unavailable');
   await db.transaction('rw', db.settings, db.projects, db.asks, db.changeOrders, db.activity, async () => {
     await Promise.all([db.settings.clear(), db.projects.clear(), db.asks.clear(), db.changeOrders.clear(), db.activity.clear()]);
-    if (data.settings) await db.settings.put({ ...data.settings, id: 'settings' });
-    if (data.projects.length) await db.projects.bulkPut(data.projects);
-    if (data.asks.length) await db.asks.bulkPut(data.asks);
-    if (data.changeOrders.length) await db.changeOrders.bulkPut(data.changeOrders);
-    if (data.activity?.length) await db.activity.bulkPut(data.activity);
+    if (cleanWorkspace.settings) await db.settings.put({ ...cleanWorkspace.settings, id: 'settings' });
+    if (cleanWorkspace.projects.length) await db.projects.bulkPut(cleanWorkspace.projects);
+    if (cleanWorkspace.asks.length) await db.asks.bulkPut(cleanWorkspace.asks);
+    if (cleanWorkspace.changeOrders.length) await db.changeOrders.bulkPut(cleanWorkspace.changeOrders);
+    if (cleanWorkspace.activity.length) await db.activity.bulkPut(cleanWorkspace.activity);
   });
 }
 
 export async function resetWorkspace(): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error('Storage unavailable');
   await db.transaction('rw', db.settings, db.projects, db.asks, db.changeOrders, db.activity, async () => {
     await Promise.all([db.settings.clear(), db.projects.clear(), db.asks.clear(), db.changeOrders.clear(), db.activity.clear()]);
   });

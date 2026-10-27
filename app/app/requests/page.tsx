@@ -44,7 +44,7 @@ export default function RequestsPage() {
           <div className="rounded-xl border border-line bg-card px-3 py-2">
             <p className="mono-label">undecided</p>
             <p className="text-[13px] tnum">
-              {money(openValue, settings.currency)} · {hoursLabel(openHours)}
+              Est. {money(openValue, settings.currency)} · {hoursLabel(openHours)}
             </p>
           </div>
         }

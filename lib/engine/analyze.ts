@@ -230,14 +230,16 @@ export function analyzeAsk(ask: ParsedAsk, options: AnalyzeOptions): AnalyzedAsk
       text: `Related to “${match.item.label}”, but your scope does not spell this out.`,
     });
   } else {
-    const meaningful = estimate.hours >= 4;
-    verdict = ask.newWorkLanguage || meaningful ? 'extra' : 'gray';
-    confidence = ask.newWorkLanguage ? 0.62 : meaningful ? 0.58 : 0.5;
+    // Effort estimates do not establish whether a contract includes something.
+    // Without a direct scope match, only explicit new-work wording suggests Extra;
+    // all other requests stay Gray for the freelancer to review.
+    verdict = ask.newWorkLanguage ? 'extra' : 'gray';
+    confidence = ask.newWorkLanguage ? 0.62 : 0.5;
     reasons.push({
       tone: 'neutral',
-      text: meaningful
-        ? 'New capability that is not covered by your scope — about half a day of work on its own.'
-        : 'Not mentioned in your scope either way.',
+      text: estimate.hours >= 4
+        ? 'No matching scope item. The rule-based engine can estimate effort, but cannot infer whether your agreement includes it — review the scope before deciding.'
+        : 'Not mentioned in your scope either way. Review the agreement before deciding.',
     });
   }
 

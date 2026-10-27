@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Download, HardDrive, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { PageHeader } from '@/components/app/AppShell';
+import { AccountPanel } from '@/components/account/AccountPanel';
+import { BillingPanel } from '@/components/billing/BillingPanel';
 import { Button, Card, Field, Input, Modal, SectionLabel, Select, Textarea, useToast } from '@/components/ui';
 import { CURRENCIES, type Currency, type Tone } from '@/lib/types';
-import { DEFAULT_TERMS, exportWorkspace, importWorkspace, resetWorkspace, saveSettings, seedDemoWorkspace, validateWorkspace } from '@/lib/db';
+import { DEFAULT_TERMS, exportWorkspace, importWorkspace, MAX_WORKSPACE_BYTES, resetWorkspace, saveSettings, seedDemoWorkspace, validateWorkspace, type WorkspaceExport } from '@/lib/db';
 import { useAsks, useChangeOrders, useProjects, useReadySettings } from '@/lib/hooks';
 import { TONE_OPTIONS } from '@/lib/templates';
 import { cn } from '@/lib/cn';
@@ -31,7 +33,11 @@ export default function SettingsPage() {
   const [tone, setTone] = useState<Tone>('warm');
   const [terms, setTerms] = useState(DEFAULT_TERMS);
   const [saving, setSaving] = useState(false);
+  const [sampleLoading, setSampleLoading] = useState(false);
+  const [confirmingImport, setConfirmingImport] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [pendingImport, setPendingImport] = useState<WorkspaceExport | null>(null);
 
   useEffect(() => {
     if (!settings) return;
@@ -47,50 +53,83 @@ export default function SettingsPage() {
     setTerms(settings.terms);
   }, [settings]);
 
+  const currencyLocked = projects === undefined || asks === undefined || orders === undefined || Boolean(projects.length || asks.length || orders.length);
+  const currencyHint = projects === undefined || asks === undefined || orders === undefined
+    ? 'Checking saved workspace data…'
+    : currencyLocked
+      ? 'Locked because saved amounts are not converted. Changing units would relabel existing records.'
+      : 'Choose before creating projects; values are never automatically converted.';
+
   if (!settings) return null;
 
   async function save() {
     setSaving(true);
-    await saveSettings({
-      name,
-      businessName,
-      role,
-      email,
-      hourlyRate: rate,
-      currency,
-      includedRevisions: revisions,
-      rushMultiplier: rush,
-      tone,
-      terms,
-    });
-    setSaving(false);
-    push('Settings saved.');
+    try {
+      await saveSettings({
+        name,
+        businessName,
+        role,
+        email,
+        hourlyRate: rate,
+        currency,
+        includedRevisions: revisions,
+        rushMultiplier: rush,
+        tone,
+        terms,
+      });
+      push('Settings saved.');
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not save settings.', 'error');
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function exportData() {
-    const data = await exportWorkspace();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `unbilled-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-    push('Backup downloaded.');
+    try {
+      const data = await exportWorkspace();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `unbilled-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      push('Backup downloaded.');
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not create a backup.', 'error');
+    }
   }
 
   async function importData(file: File) {
+    if (file.size > MAX_WORKSPACE_BYTES) {
+      push('That backup is larger than the 5 MiB restore limit. Your current workspace was not changed.', 'error');
+      return;
+    }
     try {
-      const parsed = JSON.parse(await file.text());
+      const parsed: unknown = JSON.parse(await file.text());
       if (!validateWorkspace(parsed)) {
-        push('That file is not an Unbilled backup.', 'error');
+        push('That file is not an Unbilled backup. Your current data was not changed.', 'error');
         return;
       }
-      await importWorkspace(parsed);
+      setPendingImport(parsed);
+    } catch {
+      push('Could not read that file. Your current data was not changed.', 'error');
+    }
+  }
+
+  async function confirmImport() {
+    if (!pendingImport || confirmingImport) return;
+    setConfirmingImport(true);
+    try {
+      await importWorkspace(pendingImport);
+      setPendingImport(null);
       push('Backup restored.');
       router.refresh();
-    } catch {
-      push('Could not read that file.', 'error');
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not restore that backup. Your current data was not changed.', 'error');
+    } finally {
+      setConfirmingImport(false);
     }
   }
 
@@ -99,7 +138,7 @@ export default function SettingsPage() {
       <PageHeader
         eyebrow="Settings"
         title="How Unbilled writes and bills for you"
-        description="These defaults power the pricing and the reply drafts. Nothing here is sent anywhere — it is stored in this browser only."
+        description="These defaults power pricing and reply drafts. Workspace data stays in this browser unless you explicitly save or restore an account backup."
         actions={
           <Button onClick={save} loading={saving}>
             Save changes
@@ -133,19 +172,22 @@ export default function SettingsPage() {
               <Field label="Hourly rate" hint="Used for new projects.">
                 <div className="relative">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-mute">
-                    {currency === 'USD' ? '$' : ''}
+                    {CURRENCIES.find((option) => option.code === currency)?.symbol ?? currency}
                   </span>
                   <Input
                     type="number"
                     min={1}
                     value={rate}
                     onChange={(event) => setRate(Number(event.target.value))}
-                    className={cn('tnum', currency === 'USD' && 'pl-7')}
+                    className="pl-7 tnum"
                   />
                 </div>
               </Field>
-              <Field label="Currency">
-                <Select value={currency} onChange={(event) => setCurrency(event.target.value as Currency)}>
+              <Field
+                label="Currency"
+                hint={currencyHint}
+              >
+                <Select disabled={currencyLocked} value={currency} onChange={(event) => setCurrency(event.target.value as Currency)}>
                   {CURRENCIES.map((option) => (
                     <option key={option.code} value={option.code}>
                       {option.label}
@@ -199,14 +241,15 @@ export default function SettingsPage() {
         </div>
 
         <div className="space-y-5">
+          <BillingPanel />
+          <AccountPanel />
           <Card className="p-4 sm:p-5">
             <div className="flex items-center gap-2">
               <HardDrive className="h-4 w-4 text-sage" />
               <SectionLabel className="flex-1">Your data</SectionLabel>
             </div>
             <p className="mt-2.5 text-[12px] leading-relaxed text-ink-mute">
-              Unbilled stores everything in IndexedDB in this browser. There is no account and no server copy. Export a
-              backup before switching devices or clearing site data.
+              Your active workspace is stored in IndexedDB in this browser. If you sign in, you can explicitly save a private account backup or restore it on another device. Local data is never removed automatically; export before clearing site data.
             </p>
             <div className="mt-3 grid grid-cols-3 gap-2">
               {[
@@ -242,16 +285,24 @@ export default function SettingsPage() {
             <div className="mt-4 border-t border-line pt-3">
               <p className="mono-label">sample workspace</p>
               <p className="mt-1 text-[11.5px] leading-relaxed text-ink-mute">
-                Load a worked example — one client, one scope, and a month of decisions. It replaces your current ledger.
+                Add a worked example — one client, one scope, and sample decisions. Existing data is kept; if the example is already present, it will not be added again.
               </p>
               <Button
                 size="sm"
                 variant="subtle"
                 className="mt-2"
+                loading={sampleLoading}
                 onClick={async () => {
-                  await seedDemoWorkspace();
-                  push('Sample workspace loaded.');
-                  router.refresh();
+                  setSampleLoading(true);
+                  try {
+                    await seedDemoWorkspace();
+                    push('Sample workspace is ready, or it was already present.');
+                    router.refresh();
+                  } catch (error) {
+                    push(error instanceof Error ? error.message : 'Could not load sample data.', 'error');
+                  } finally {
+                    setSampleLoading(false);
+                  }
                 }}
               >
                 <RefreshCw className="h-3.5 w-3.5" /> Load sample data
@@ -275,8 +326,8 @@ export default function SettingsPage() {
               {[
                 ['Version', '1.0.0'],
                 ['Scope engine', 'Deterministic rules, no model'],
-                ['Storage', 'IndexedDB (local)'],
-                ['Account', 'None required'],
+                ['Storage', 'Local + optional private backup'],
+                ['Account', 'Optional; email verified'],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-center justify-between gap-3">
                   <dt className="text-ink-mute">{label}</dt>
@@ -293,22 +344,52 @@ export default function SettingsPage() {
       </div>
 
       <Modal
+        open={pendingImport !== null}
+        onClose={() => { if (!confirmingImport) setPendingImport(null); }}
+        title="Replace this browser’s workspace?"
+        description="Importing this backup replaces all projects, requests, change orders, settings, and activity currently stored in this browser."
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" disabled={confirmingImport} onClick={() => setPendingImport(null)}>
+              Cancel
+            </Button>
+            <Button variant="accent" loading={confirmingImport} onClick={() => void confirmImport()}>
+              Replace and restore backup
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-[13px] leading-relaxed text-ink-soft">
+          The selected backup contains {pendingImport?.projects.length ?? 0} projects, {pendingImport?.asks.length ?? 0} requests, and {pendingImport?.changeOrders.length ?? 0} change orders. Cancel to keep your current data, or confirm to replace it.
+        </p>
+      </Modal>
+
+      <Modal
         open={resetOpen}
-        onClose={() => setResetOpen(false)}
+        onClose={() => { if (!resetting) setResetOpen(false); }}
         title="Delete all local data?"
         description="This cannot be undone."
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setResetOpen(false)}>
+            <Button variant="ghost" disabled={resetting} onClick={() => setResetOpen(false)}>
               Cancel
             </Button>
             <Button
               variant="accent"
+              loading={resetting}
               onClick={async () => {
-                await resetWorkspace();
-                setResetOpen(false);
-                push('Everything deleted.');
-                router.push('/onboarding');
+                if (resetting) return;
+                setResetting(true);
+                try {
+                  await resetWorkspace();
+                  setResetOpen(false);
+                  push('Everything deleted.');
+                  router.push('/onboarding');
+                } catch (error) {
+                  push(error instanceof Error ? error.message : 'Could not delete the workspace.', 'error');
+                } finally {
+                  setResetting(false);
+                }
               }}
             >
               Delete everything

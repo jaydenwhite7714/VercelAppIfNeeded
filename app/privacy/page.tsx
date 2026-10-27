@@ -7,34 +7,38 @@ import { Button } from '@/components/ui';
 export const metadata: Metadata = {
   title: 'Privacy and data',
   description:
-    'Unbilled stores your ledger in your browser. No account, no server-side client data, no analytics, no AI vendor. Here is exactly how it works.',
+    'Unbilled keeps your working ledger in your browser. Optional verified accounts can store a private, manually saved workspace backup. No analytics or AI vendor.',
   alternates: { canonical: '/privacy' },
 };
 
 const SECTIONS = [
   {
-    title: 'What we store',
-    body: 'Nothing on a server. Projects, scopes, client names, requests, rates, change orders, and settings are stored in IndexedDB in your browser. Clearing your browser data deletes them.',
+    title: 'What stays in this browser',
+    body: 'By default, projects, scopes, client names, requests, rates, change orders, and settings are stored in IndexedDB on this device. A local workspace is not protected from other people who can use the same browser profile.',
+  },
+  {
+    title: 'Optional account data',
+    body: 'If account services are enabled, Supabase Auth processes your normalized email, username, password credential, verification/reset tokens, and secure session. Unbilled never receives or stores your plaintext password. When you explicitly save a cloud backup in Settings, the complete workspace JSON (which can contain client names, messages, rates, and change orders) is stored in a user-owned database row protected by PostgreSQL row-level security. It is not automatic synchronization.',
+  },
+  {
+    title: 'Optional Pro billing and saved playbooks',
+    body: 'If the owner enables Stripe test-mode billing and you choose Pro Checkout, Stripe-hosted pages collect payment details; Unbilled never receives or stores card numbers or security codes. Supabase stores the Stripe customer reference, subscription status, configured price, billing period, and cancellation state under account-level row-level security. Personal reply playbooks you choose to save are stored in your own Supabase rows and protected by server-verified Pro access and RLS. Stripe processes payment information under its own privacy terms; no live payment is available through this test-only integration.',
   },
   {
     title: 'What leaves your browser',
-    body: 'Only what you choose to send. A change order link carries the entire document in the URL fragment — the part after the # — which browsers never transmit to a server. When you email it, your mail client sends it, not us.',
+    body: 'No client message is uploaded when you analyze it locally. A change-order link carries the document in the URL fragment — the part after the # — which browsers do not transmit to the link host. Sending that link or a generated email uses your mail client. Choosing a cloud backup is different: it uploads the whole workspace snapshot to the configured Supabase project.',
   },
   {
-    title: 'Accounts and tracking',
-    body: 'There are no accounts, no cookies for tracking, no analytics scripts, no session recording, and no advertising pixels. The app ships without third-party client-side code beyond its own bundled libraries.',
+    title: 'Authentication and tracking',
+    body: 'Account cookies are used only for secure sign-in and session refresh, not advertising. The app does not include analytics scripts, session recording, or advertising pixels. Supabase processes account requests and may retain operational/security logs under its own terms and retention policies.',
   },
   {
     title: 'AI and client data',
     body: 'The scope engine is deterministic: pattern matching and a pricing table that runs locally. No language model is called, and no client message is sent to an AI provider.',
   },
   {
-    title: 'Backups and portability',
-    body: 'You can export your entire workspace as a JSON file at any time in Settings, and import it on another device. You own the file. There is no export request to file and no waiting period.',
-  },
-  {
-    title: 'If you delete something',
-    body: 'Deleting a project, request, or change order removes it from your browser immediately. Because there is no server copy, it cannot be recovered unless you exported a backup first.',
+    title: 'Backups, deletion, and portability',
+    body: 'Settings lets you export/import a local JSON backup. A verified account can manually save, restore, replace, or delete its private cloud snapshot; restoring downloads a backup of the current local workspace first. Removing a local project does not update an older cloud snapshot. Account deletion is not yet self-service; ask the site owner to remove the Auth account. Clearing browser data removes the local copy, not an account backup.',
   },
 ];
 
@@ -48,8 +52,8 @@ export default function PrivacyPage() {
           Your client&apos;s business is not our business.
         </h1>
         <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">
-          Unbilled is local-first by design. That is not a marketing position — it is why the app loads instantly, works
-          offline, and costs nothing to run. Here is the complete data story.
+          Unbilled is local-first by design: work happens in your browser and remains there unless you explicitly save
+          a private cloud snapshot with a verified account. Here is the data story, including what account setup changes.
         </p>
 
         <div className="mt-8 divide-y divide-line border-y border-line">
@@ -70,8 +74,9 @@ export default function PrivacyPage() {
             <li>• What happens if the company shuts down?</li>
           </ul>
           <p className="mt-3 text-[12.5px] leading-relaxed text-ink-mute">
-            For Unbilled the answers are: nowhere, no, immediately, and your ledger keeps working because it was never on
-            our server.
+            Analysis runs locally. If you opt in to a cloud backup, the complete JSON workspace is sent to your account’s
+            Supabase row, where row-level security limits access by authenticated user ID. Keep a separate JSON export
+            if you need an independent copy.
           </p>
         </div>
 

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight, BadgeCheck, Check, Download, Mail, ShieldCheck } from 'lucide-react';
 import { ChangeOrderDocument } from '@/components/app/ChangeOrderDocument';
 import { Button, Card, CopyButton, Field, Input, Modal, Skeleton, Textarea } from '@/components/ui';
-import { approvalReceipt, decodeSharedOrder, type SharedChangeOrder } from '@/lib/codec';
+import { approvalReceipt, decodeSharedOrder, isChangeOrderExpired, type SharedChangeOrder } from '@/lib/codec';
 import { downloadChangeOrderPdf } from '@/lib/pdf';
 import { Wordmark } from '@/components/brand';
 import { money } from '@/lib/format';
@@ -20,6 +20,7 @@ export default function ClientChangeOrderPage() {
   const [approveOpen, setApproveOpen] = useState(false);
   const [approvedBy, setApprovedBy] = useState('');
   const [approvedAt, setApprovedAt] = useState<number | null>(null);
+  const [approvalNote, setApprovalNote] = useState('');
   const [declined, setDeclined] = useState(false);
 
   useEffect(() => {
@@ -42,11 +43,12 @@ export default function ClientChangeOrderPage() {
   }, []);
 
   const order = state.status === 'ready' ? state.order : null;
+  const expired = isChangeOrderExpired(order?.validUntil);
 
   const receipt = useMemo(() => {
     if (!order || !approvedAt) return '';
-    return approvalReceipt(order, approvedBy || order.clientName, approvedAt);
-  }, [order, approvedAt, approvedBy]);
+    return approvalReceipt(order, approvedBy || order.clientName, approvedAt, approvalNote);
+  }, [order, approvedAt, approvedBy, approvalNote]);
 
   return (
     <div className="min-h-dvh bg-paper">
@@ -54,7 +56,7 @@ export default function ClientChangeOrderPage() {
         <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3.5">
           <Wordmark />
           <span className="mono-label flex items-center gap-1.5">
-            <ShieldCheck className="h-3 w-3 text-sage" /> private link
+            <ShieldCheck className="h-3 w-3 text-sage" /> shared document
           </span>
         </div>
       </header>
@@ -98,6 +100,9 @@ export default function ClientChangeOrderPage() {
             </div>
 
             <ChangeOrderDocument order={order!} />
+            <Card className="mt-4 border-gold/30 bg-gold-soft/40 p-3.5">
+              <p className="text-[11.5px] leading-relaxed text-ink-soft">This document is carried in the link itself. It is not encrypted or access-controlled, so anyone with the link can view it. Avoid forwarding it beyond the intended recipients.</p>
+            </Card>
 
             {approvedAt ? (
               <Card className="mt-5 border-sage/30 bg-sage-soft/50 p-5">
@@ -107,8 +112,7 @@ export default function ClientChangeOrderPage() {
                     <h2 className="text-[17px] text-sage">Approved — here is your receipt.</h2>
                     <p className="mt-1 text-[12.5px] leading-relaxed text-ink-soft">
                       Nothing is sent automatically. Copy the receipt below and reply to {order!.fromName}
-                      {order!.fromEmail ? ` (${order!.fromEmail})` : ''} so it is on record. A timestamped receipt protects
-                      both sides.
+                      {order!.fromEmail ? ` (${order!.fromEmail})` : ''} so it is on record. A timestamped receipt gives both sides a copy of the decision.
                     </p>
                     <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-card p-3 font-mono text-[10.5px] leading-relaxed text-ink-soft">
                       {receipt}
@@ -164,12 +168,20 @@ export default function ClientChangeOrderPage() {
                   </a>
                 ) : null}
               </Card>
+            ) : expired ? (
+              <Card className="mt-5 border-gold/30 bg-gold-soft/40 p-5">
+                <h2 className="text-[17px]">This change order has expired.</h2>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-soft">
+                  The review date was {order!.validUntil}. This link is read-only now; ask {order!.fromName} for an updated proposal before approving.
+                </p>
+                {order!.fromEmail ? <a className="mt-3 inline-block" href={`mailto:${order!.fromEmail}?subject=${encodeURIComponent(`Updated change order requested: ${order!.number}`)}`}><Button size="sm" variant="outline"><Mail className="h-3.5 w-3.5" /> Ask for an updated proposal</Button></a> : null}
+              </Card>
             ) : (
               <Card className="mt-5 p-5">
                 <h2 className="text-[17px]">Your decision</h2>
                 <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-soft">
-                  Approving here creates a receipt in your browser. Send it back to make the approval official — it
-                  includes the document checksum, your name, and a timestamp.
+                  This page creates a receipt in this tab. Send it back as a written record; the checksum is not a
+                  digital signature and does not verify your identity.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button onClick={() => setApproveOpen(true)}>
@@ -201,7 +213,7 @@ export default function ClientChangeOrderPage() {
                     <Download className="h-3.5 w-3.5" /> Download a PDF copy
                   </Button>
                   <span className="mono-label normal-case tracking-[0.03em]">
-                    Checksum {order!.checksum} · verified in your browser
+                    Checksum {order!.checksum} · checked in this browser (not a signature)
                   </span>
                 </div>
               </Card>
@@ -247,8 +259,13 @@ export default function ClientChangeOrderPage() {
           <Input value={approvedBy} onChange={(event) => setApprovedBy(event.target.value)} placeholder="Maya Chen" autoFocus />
         </Field>
         <div className="mt-4">
-          <Field label="Optional note to the sender" optional>
-            <Textarea placeholder="Anything you want them to know before they start." />
+          <Field label="Optional note to the sender" optional hint="Included in the text receipt so you can copy or email it back with your decision.">
+            <Textarea
+              value={approvalNote}
+              onChange={(event) => setApprovalNote(event.target.value)}
+              maxLength={2_000}
+              placeholder="Anything you want them to know before they start."
+            />
           </Field>
         </div>
       </Modal>

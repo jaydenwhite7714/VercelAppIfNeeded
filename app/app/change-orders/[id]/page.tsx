@@ -22,6 +22,7 @@ import {
   deleteChangeOrder,
   markChangeOrderApproved,
   markChangeOrderSent,
+  markChangeOrderDeclined,
   updateChangeOrder,
 } from '@/lib/db';
 import { useChangeOrder, useProject, useReadySettings } from '@/lib/hooks';
@@ -52,6 +53,7 @@ export default function ChangeOrderDetailPage() {
   const [editTimeline, setEditTimeline] = useState('');
   const [editValidUntil, setEditValidUntil] = useState('');
   const [editItems, setEditItems] = useState<ChangeOrderItem[]>([]);
+  const [editError, setEditError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -82,7 +84,7 @@ export default function ChangeOrderDetailPage() {
       askTitle: order.title,
       hours: order.items.reduce((sum, item) => sum + item.hours, 0),
       value: order.total,
-      currency: settings.currency,
+      currency: order.currency,
       tone: settings.tone,
       dueDate: project.dueDate,
       changeOrderNumber: order.number,
@@ -126,18 +128,25 @@ export default function ChangeOrderDetailPage() {
   async function saveEdit() {
     if (!order) return;
     setSaving(true);
-    const total = editItems.reduce((sum, item) => sum + Math.round(item.hours * item.rate), 0);
-    await updateChangeOrder(order.id, {
-      title: editTitle,
-      summary: editSummary,
-      timelineImpact: editTimeline,
-      validUntil: editValidUntil || undefined,
-      items: editItems.map((item) => ({ ...item, amount: Math.round(item.hours * item.rate) })),
-      total,
-    });
-    setSaving(false);
-    setEditOpen(false);
-    push('Change order updated. The share link is refreshed.');
+    setEditError(null);
+    try {
+      const items = editItems.map((item) => ({ ...item, amount: Math.round(item.hours * item.rate) }));
+      const total = items.reduce((sum, item) => sum + item.amount, 0);
+      await updateChangeOrder(order.id, {
+        title: editTitle,
+        summary: editSummary,
+        timelineImpact: editTimeline,
+        validUntil: editValidUntil || undefined,
+        items,
+        total,
+      });
+      setEditOpen(false);
+      push('Change order updated. The share link is refreshed.');
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : 'Could not save this change order.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -155,13 +164,15 @@ export default function ChangeOrderDetailPage() {
           </div>
           <h1 className="mt-2 text-[clamp(1.55rem,3.2vw,2rem)] font-semibold leading-tight tracking-[-0.03em]">{order.title}</h1>
           <p className="mt-1 text-[13px] text-ink-mute">
-            {project.name} · {project.clientName} · {money(order.total, settings.currency)} additional fee
+            {project.name} · {project.clientName} · {money(order.total, order.currency)} additional fee
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-            <Pencil className="h-3.5 w-3.5" /> Edit
-          </Button>
+          {order.status === 'draft' ? (
+            <Button variant="outline" size="sm" onClick={() => { setEditError(null); setEditOpen(true); }}>
+              <Pencil className="h-3.5 w-3.5" /> Edit draft
+            </Button>
+          ) : null}
           {share ? (
             <Button
               variant="outline"
@@ -184,8 +195,8 @@ export default function ChangeOrderDetailPage() {
             <div>
               <p className="text-[13px] font-medium text-sage">Approved by {order.approvedBy || project.clientName}</p>
               <p className="text-[11.5px] text-sage/80">
-                {order.approvedAt ? formatDate(order.approvedAt) : ''} · {money(order.total, settings.currency)} added to the ledger
-                {order.approvalId ? ` · receipt ${order.approvalId}` : ''}
+                {order.approvedAt ? formatDate(order.approvedAt) : ''} · {money(order.total, order.currency)} approved order value
+                {order.approvalId ? ` · receipt checksum ${order.approvalId}` : ''}
               </p>
             </div>
           </div>
@@ -204,7 +215,7 @@ export default function ChangeOrderDetailPage() {
           <Card className="p-4">
             <SectionLabel>Send for approval</SectionLabel>
             <p className="mt-2.5 text-[12px] leading-relaxed text-ink-mute">
-              The whole document travels in the link&apos;s fragment — no account, no server, nothing to log in to.
+              The document travels in the URL fragment and is not stored on Unbilled servers. The link is not encrypted or access-controlled: anyone who gets it can read the details, so share it only with the intended client. Their approval or decline stays on their device until they send the receipt back; this page does not notify you automatically.
             </p>
             {share ? (
               <>
@@ -222,7 +233,7 @@ export default function ChangeOrderDetailPage() {
                     onClick={async () => {
                       try {
                         await navigator.clipboard.writeText(share.url);
-                        push('Approval link copied.');
+                        push('Change-order link copied.');
                       } catch {
                         push('Could not copy — select the link manually.', 'error');
                       }
@@ -273,19 +284,23 @@ export default function ChangeOrderDetailPage() {
                 variant={order.status === 'sent' ? 'subtle' : 'outline'}
                 size="sm"
                 className="w-full justify-start"
-                disabled={order.status === 'approved'}
+                disabled={order.status !== 'draft'}
                 onClick={async () => {
-                  await markChangeOrderSent(order.id);
-                  push('Marked as sent. The clock on the validity window starts now.');
+                  try {
+                    await markChangeOrderSent(order.id);
+                    push('Marked as sent. The clock on the validity window starts now.');
+                  } catch (error) {
+                    push(error instanceof Error ? error.message : 'Could not update this order.', 'error');
+                  }
                 }}
               >
-                <Send className="h-3.5 w-3.5" /> Mark as sent
+                <Send className="h-3.5 w-3.5" /> {order.status === 'sent' ? 'Sent' : 'Mark as sent'}
               </Button>
               <Button
                 variant={order.status === 'approved' ? 'subtle' : 'outline'}
                 size="sm"
                 className="w-full justify-start"
-                disabled={order.status === 'approved'}
+                disabled={order.status === 'approved' || order.status === 'declined'}
                 onClick={() => setApproveOpen(true)}
               >
                 <Check className="h-3.5 w-3.5" /> Record approval
@@ -294,7 +309,7 @@ export default function ChangeOrderDetailPage() {
                 variant="outline"
                 size="sm"
                 className="w-full justify-start"
-                disabled={order.status === 'approved'}
+                disabled={order.status === 'approved' || order.status === 'declined'}
                 onClick={() => {
                   setReceiptError(null);
                   setReceiptText('');
@@ -309,16 +324,20 @@ export default function ChangeOrderDetailPage() {
                 className="w-full justify-start"
                 disabled={order.status === 'declined' || order.status === 'approved'}
                 onClick={async () => {
-                  await updateChangeOrder(order.id, { status: 'declined' });
-                  push('Marked as declined. The request stays in the ledger.');
+                  try {
+                    await markChangeOrderDeclined(order.id);
+                    push('Marked as declined. The request stays in the ledger.');
+                  } catch (error) {
+                    push(error instanceof Error ? error.message : 'Could not update this order.', 'error');
+                  }
                 }}
               >
                 <X className="h-3.5 w-3.5" /> Mark as declined
               </Button>
             </div>
             <p className="mt-3 text-[11px] leading-relaxed text-ink-mute">
-              When a client approves through the link, they get a timestamped receipt to send back to you. Paste it into
-              the ledger by recording the approval here.
+              After confirming on the share page, the client can copy or download a text receipt. Bring it back manually;
+              matching details do not authenticate who sent it.
             </p>
           </Card>
 
@@ -337,13 +356,17 @@ export default function ChangeOrderDetailPage() {
                 </div>
               ))}
             </dl>
-            <button
-              type="button"
-              onClick={() => setDeleteOpen(true)}
-              className="mt-3 inline-flex items-center gap-1 text-[11.5px] text-accent-deep transition-opacity hover:opacity-70"
-            >
-              <Trash2 className="h-3 w-3" /> Delete change order
-            </button>
+            {order.status === 'draft' ? (
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                className="mt-3 inline-flex items-center gap-1 text-[11.5px] text-accent-deep transition-opacity hover:opacity-70"
+              >
+                <Trash2 className="h-3 w-3" /> Delete draft change order
+              </button>
+            ) : (
+              <p className="mt-3 text-[11px] text-ink-mute">This {order.status} record is kept to preserve the approval history.</p>
+            )}
           </Card>
         </div>
       </div>
@@ -352,7 +375,7 @@ export default function ChangeOrderDetailPage() {
         open={approveOpen}
         onClose={() => setApproveOpen(false)}
         title="Record the approval"
-        description="Approvals through the share link produce a receipt. Record it here so the ledger reflects the money."
+        description="Record the change order as approved only after you receive confirmation through your own channel. This status does not verify identity or payment."
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setApproveOpen(false)}>
@@ -361,9 +384,13 @@ export default function ChangeOrderDetailPage() {
             <Button
               onClick={async () => {
                 if (!order) return;
-                await markChangeOrderApproved(order.id, approvedBy || project.clientName, share?.shared.checksum);
-                setApproveOpen(false);
-                push('Approved. Added to the ledger.');
+                try {
+                  await markChangeOrderApproved(order.id, approvedBy || project.clientName, share?.shared.checksum);
+                  setApproveOpen(false);
+                  push('Approved order status recorded.');
+                } catch (error) {
+                  push(error instanceof Error ? error.message : 'Could not record approval.', 'error');
+                }
               }}
             >
               Mark approved
@@ -385,7 +412,7 @@ export default function ChangeOrderDetailPage() {
         footer={
           <div className="flex items-center justify-between">
             <span className="mono-label tnum">
-              total {money(editItems.reduce((sum, item) => sum + Math.round(item.hours * item.rate), 0), settings.currency)}
+              total {money(editItems.reduce((sum, item) => sum + Math.round(item.hours * item.rate), 0), order.currency)}
             </span>
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setEditOpen(false)}>
@@ -399,6 +426,7 @@ export default function ChangeOrderDetailPage() {
         }
       >
         <div className="space-y-4">
+          {editError ? <p role="alert" className="rounded-lg border border-accent/25 bg-accent-soft px-3 py-2 text-[12px] leading-relaxed text-accent-deep">{editError}</p> : null}
           <Field label="Title">
             <Input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} />
           </Field>
@@ -462,12 +490,12 @@ export default function ChangeOrderDetailPage() {
                         className="w-16 bg-transparent text-right text-[12px] tnum outline-none"
                       />
                     </label>
-                    <span className="w-20 text-right text-[12.5px] tnum">{money(Math.round(item.hours * item.rate), settings.currency)}</span>
+                    <span className="w-20 text-right text-[12.5px] tnum">{money(Math.round(item.hours * item.rate), order.currency)}</span>
                     <button
                       type="button"
                       onClick={() => setEditItems((items) => items.filter((entry) => entry.id !== item.id))}
                       className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-mute hover:bg-accent-soft hover:text-accent-deep"
-                      aria-label="Remove item"
+                      aria-label={`Remove item ${index + 1}`}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -496,7 +524,7 @@ export default function ChangeOrderDetailPage() {
         open={receiptOpen}
         onClose={() => setReceiptOpen(false)}
         title="Paste the client's approval receipt"
-        description="The client gets a receipt after approving through the share link. Pasting it here verifies the document and records the money."
+        description="Check that the receipt's amount, currency, order number and checksum match this version before recording it. This does not authenticate who approved or prove the text is genuine."
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setReceiptOpen(false)}>
@@ -506,16 +534,26 @@ export default function ChangeOrderDetailPage() {
               onClick={async () => {
                 const parsed = parseApprovalReceipt(receiptText);
                 if (!parsed) {
-                  setReceiptError('That does not look like an Unbilled receipt. It should include an “Approved by” line.');
+                  setReceiptError('This receipt is incomplete or malformed. Paste the full receipt generated from the client approval page.');
                   return;
                 }
-                if (parsed.checksum && share && parsed.checksum !== share.shared.checksum) {
-                  setReceiptError('This receipt belongs to a different version of the document. Re-send the current link before recording it.');
+                if (
+                  !share ||
+                  parsed.checksum !== share.shared.checksum ||
+                  parsed.changeOrderNumber !== share.shared.number ||
+                  parsed.total !== share.shared.total ||
+                  parsed.currency !== share.shared.currency
+                ) {
+                  setReceiptError('The receipt details do not match this version of the change order. Re-send the current link if it was updated.');
                   return;
                 }
-                await markChangeOrderApproved(order.id, parsed.approvedBy, parsed.checksum ?? share?.shared.checksum);
-                setReceiptOpen(false);
-                push('Receipt verified — approval recorded.');
+                try {
+                  await markChangeOrderApproved(order.id, parsed.approvedBy, parsed.checksum, parsed.approvedAt);
+                  setReceiptOpen(false);
+                  push('Receipt details match — approval recorded.');
+                } catch (error) {
+                  setReceiptError(error instanceof Error ? error.message : 'Could not record the approval.');
+                }
               }}
             >
               Verify & record
@@ -562,7 +600,7 @@ export default function ChangeOrderDetailPage() {
         }
       >
         <p className="text-[13px] leading-relaxed text-ink-soft">
-          {order.number} — {order.title} · {money(order.total, settings.currency)}
+          {order.number} — {order.title} · {money(order.total, order.currency)}
         </p>
       </Modal>
     </>
