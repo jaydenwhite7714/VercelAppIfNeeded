@@ -26,6 +26,7 @@ import {
 import { buildSharedOrder, encodeSharedOrder, MAX_SHARE_LENGTH, shareUrl } from '@/lib/codec';
 import { computeMetrics } from '@/lib/hooks';
 import type { Settings } from '@/lib/types';
+import { isProEntitled } from '@/lib/billing/core';
 
 async function freshWorkspace(): Promise<Settings> {
   await resetWorkspace();
@@ -46,6 +47,20 @@ async function freshWorkspace(): Promise<Settings> {
 describe('workspace persistence', () => {
   beforeEach(async () => {
     await freshWorkspace();
+  });
+
+  it('keeps the local workspace unchanged when server-derived Pro access expires', async () => {
+    await createProject({ name: 'Keep local data', clientName: 'Client', rate: 100, startDate: '2026-10-01', revisionRounds: 1, scope: [] });
+    const before = await exportWorkspace();
+    const active = { status: 'active', planCode: 'pro' as const, priceId: 'price_test123', currentPeriodEnd: 1_900_000_000, cancelAtPeriodEnd: false };
+    expect(isProEntitled(active, 1_800_000_000_000)).toBe(true);
+    expect(isProEntitled({ ...active, status: 'canceled' }, 1_800_000_000_000)).toBe(false);
+    const after = await exportWorkspace();
+    expect(after.settings).toEqual(before.settings);
+    expect(after.projects).toEqual(before.projects);
+    expect(after.asks).toEqual(before.asks);
+    expect(after.changeOrders).toEqual(before.changeOrders);
+    expect(after.activity).toEqual(before.activity);
   });
 
   it('creates a project and reads it back', async () => {

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Download, HardDrive, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { PageHeader } from '@/components/app/AppShell';
 import { AccountPanel } from '@/components/account/AccountPanel';
+import { BillingPanel } from '@/components/billing/BillingPanel';
 import { Button, Card, Field, Input, Modal, SectionLabel, Select, Textarea, useToast } from '@/components/ui';
 import { CURRENCIES, type Currency, type Tone } from '@/lib/types';
 import { DEFAULT_TERMS, exportWorkspace, importWorkspace, MAX_WORKSPACE_BYTES, resetWorkspace, saveSettings, seedDemoWorkspace, validateWorkspace, type WorkspaceExport } from '@/lib/db';
@@ -240,6 +241,7 @@ export default function SettingsPage() {
         </div>
 
         <div className="space-y-5">
+          <BillingPanel />
           <AccountPanel />
           <Card className="p-4 sm:p-5">
             <div className="flex items-center gap-2">

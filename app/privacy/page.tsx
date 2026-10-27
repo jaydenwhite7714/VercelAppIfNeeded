@@ -21,6 +21,10 @@ const SECTIONS = [
     body: 'If account services are enabled, Supabase Auth processes your normalized email, username, password credential, verification/reset tokens, and secure session. Unbilled never receives or stores your plaintext password. When you explicitly save a cloud backup in Settings, the complete workspace JSON (which can contain client names, messages, rates, and change orders) is stored in a user-owned database row protected by PostgreSQL row-level security. It is not automatic synchronization.',
   },
   {
+    title: 'Optional Pro billing and saved playbooks',
+    body: 'If the owner enables Stripe test-mode billing and you choose Pro Checkout, Stripe-hosted pages collect payment details; Unbilled never receives or stores card numbers or security codes. Supabase stores the Stripe customer reference, subscription status, configured price, billing period, and cancellation state under account-level row-level security. Personal reply playbooks you choose to save are stored in your own Supabase rows and protected by server-verified Pro access and RLS. Stripe processes payment information under its own privacy terms; no live payment is available through this test-only integration.',
+  },
+  {
     title: 'What leaves your browser',
     body: 'No client message is uploaded when you analyze it locally. A change-order link carries the document in the URL fragment — the part after the # — which browsers do not transmit to the link host. Sending that link or a generated email uses your mail client. Choosing a cloud backup is different: it uploads the whole workspace snapshot to the configured Supabase project.',
   },

@@ -20,7 +20,7 @@ moment visible and gives you the sentence.
 | Change orders | Itemised document, PDF export, self-contained approval link, client-side approval receipt with checksum, receipt verification, status tracking. |
 | Client scope page | Share a read-only, plain-language scope (included / not included / revisions) as a self-contained URL; anyone with the link can view it. |
 | Leak report | Six-month chart, per-client breakdown, share card exported as PNG, copy-ready summary. |
-| Library | Eight reply scripts in-app, ten contract clauses publicly, plus change order and scope-of-work templates. |
+| Library | Eight built-in reply scripts, ten public contract clauses, plus change-order and scope-of-work templates. Pro optionally adds personal cloud-saved reply playbooks when the owner configures test-mode billing. |
 | Local data | IndexedDB persistence, JSON export/import, sample workspace, full reset. |
 | Optional accounts | Google, Microsoft, and Apple OAuth plus email/password signup through Supabase Auth; password recovery; manually saved private account snapshots in Supabase Postgres with RLS. No automatic sync and no account required for local data. |
 
@@ -29,8 +29,9 @@ moment visible and gives you the sentence.
 The working ledger remains in this browser's IndexedDB unless you explicitly choose a private account backup. Signup is
 optional. Verified accounts use Supabase Auth and a single per-user JSON snapshot in Postgres, protected by row-level
 security; upload, restore, replacement and deletion are manual, not continuous synchronization. Auth/email metadata and
-opt-in workspace snapshots therefore leave the browser when those features are used. The application does not use a
-service-role key. Change-order and scope links carry document data in the URL **fragment** (`#…`), which browsers do not
+opt-in workspace snapshots therefore leave the browser when those features are used. The normal account flows use the
+public Supabase key; the optional billing webhook uses a privileged service key only on the server, never in browser code.
+Change-order and scope links carry document data in the URL **fragment** (`#…`), which browsers do not
 transmit in HTTP requests to the link host. The fragment is not encrypted or access-controlled: anyone with the full URL
 can inspect the content, so share only with intended recipients. Client review does not notify the sender automatically;
 any approval receipt must be returned by the client. Local JSON restores are schema-validated and capped at 5 MiB; invalid
@@ -41,7 +42,7 @@ files leave the existing workspace unchanged.
 - **Next.js 15** (App Router, React 19, TypeScript) — deployed on Vercel
 - **Tailwind CSS v4** with a custom design system (warm paper, ink, vermillion; Fraunces + Inter Tight + JetBrains Mono)
 - **Dexie / IndexedDB** for the local workspace, **dexie-react-hooks** for live queries
-- **Supabase Auth + Postgres RLS** for optional email-verified accounts and manually saved private workspace snapshots
+- **Supabase Auth + Postgres RLS** for optional email-verified accounts, manually saved private workspace snapshots, and server-enforced Pro playbooks
 - **@supabase/ssr** for HttpOnly cookie sessions and server-side authentication
 - **Vitest** + **fake-indexeddb** for engine, codec, auth-route and persistence tests
 
@@ -52,8 +53,8 @@ lightweight trial prompt—not secure anti-abuse enforcement—and may be reset 
 Cross-tab updates are synchronized when browser storage events arrive. When the allowance is used, local work remains in
 this browser. Google, Microsoft, and Apple OAuth require their Supabase provider setup, the profile migrations, and
 Preview/Production redirect configuration; email/password signup and recovery additionally require verified email
-delivery. Private cloud backups remain behind the existing database/readiness gates. See **Account setup** below. No
-secret/service-role key is used by the application.
+delivery. Private cloud backups remain behind the existing database/readiness gates. See **Account setup** below. Stripe billing is
+a separate, opt-in test-mode integration that uses a server-only service-role key for signed webhook persistence.
 
 ## Getting started
 
@@ -189,8 +190,9 @@ separate approval.
    the email gate is off. Set `SUPABASE_AUTH_SCHEMA_READY=true` only after applying and checking the migration; set
    `SUPABASE_EMAIL_DELIVERY_READY=true` only after a real test email has arrived and the verification/reset flow has been
    checked. Do not treat turning a gate on as proof that the provider is working. For local development, use
-   `NEXT_PUBLIC_APP_URL=http://localhost:3000`. The public key is intentionally public; **never set or expose a
-   service-role key**. Add Vercel variables yourself only after review; production settings were not changed here.
+   `NEXT_PUBLIC_APP_URL=http://localhost:3000`. The public anon/publishable key is intentionally public. Never place `SUPABASE_SERVICE_ROLE_KEY` in `NEXT_PUBLIC_*`, a
+   client bundle, or the repository; the webhook needs it only as a private server secret. Add Vercel variables yourself
+   only after review; no provider or Production settings were changed here.
 8. Register with any enabled Google, Microsoft, or Apple provider, or with email, then use Settings → **Account & private backup** to save/restore a
    snapshot. The first upload leaves local data in place. Restore downloads a JSON copy of the current browser workspace
    before replacing it. Concurrent overwrites are rejected. Sign-out does not delete local IndexedDB data. Account deletion
@@ -199,6 +201,60 @@ separate approval.
 The app never displays “Email sent”. A successful Auth API response is described as a conditional verification/reset
 request; SMTP acceptance does not prove mailbox delivery. Provider errors are surfaced, and retry links are available.
 
+## Stripe subscriptions and Pro (test mode only)
+
+The integration accepts **Stripe test secret keys only** (`sk_test_…`) and rejects live-mode webhook events. Checkout is
+hosted by Stripe; Unbilled never receives or stores card numbers. The proposed default is **$12 USD per month**, but the
+actual recurring test Price ID is server-configured and the public label is separately configurable. The only paid
+capability added here is personal cloud-saved reply playbooks. Free local ledger data, scope checks, backups, and built-in
+scripts are not moved, synced, or deleted when a subscription expires. Pro access comes from a verified Supabase session,
+a signed Stripe webhook, and Postgres RLS—not from browser state or Checkout return parameters.
+
+No Stripe products or secrets were created, no Supabase database migration was applied, and no deployment settings were changed for this implementation.
+To enable a non-production test environment, the owner should:
+
+1. Review `supabase/migrations/202610260001_billing_and_pro_playbooks.sql`, then apply it to the intended Supabase project
+   and verify the four billing/playbook tables, RLS policies, and `apply_stripe_subscription_event` function. This migration
+   has not been applied by this code change.
+2. In **Stripe Test mode** only, create a recurring USD monthly Price for the desired amount (initial proposal: $12 USD),
+   and configure the Stripe Customer Portal to permit subscription management/cancellation. Copy its `price_…` ID. Keep
+   that ID stable while subscriptions exist: webhook processing classifies only the configured Pro Price as Pro, so
+   changing it without an explicit migration/reclassification plan can remove access for existing subscribers.
+3. Configure these exact variables in a private, **non-production** server environment. Use the Preview environment in
+   Vercel or a dedicated non-production Cloudflare Worker. Never share values in chat, commit them, or expose secrets in
+   `NEXT_PUBLIC_*` variables.
+
+   | Variable | Purpose |
+   | --- | --- |
+   | `STRIPE_SECRET_KEY` | Stripe test secret only; must begin `sk_test_`. |
+   | `STRIPE_PRO_PRICE_ID` | The recurring USD monthly test Price ID created above; never supplied by the browser. |
+   | `STRIPE_WEBHOOK_SECRET` | Test-mode endpoint signing secret (`whsec_…`). |
+   | `SUPABASE_SERVICE_ROLE_KEY` | Private server-only Supabase service-role/secret key used only by the webhook; never client-side. |
+   | `BILLING_SCHEMA_READY` | Keep `false` until the billing migration and RLS are applied and reviewed; then the owner may set exact string `true` for the test deployment. |
+   | `NEXT_PUBLIC_PRO_PRICE_LABEL` | Required public display label; `.env.example` proposes `$12 USD / month`. Keep it aligned with the configured Stripe Price. |
+   | `NEXT_PUBLIC_APP_URL` | Canonical origin for that test deployment and Checkout redirects. |
+
+   Keep the existing Supabase Project URL and anon/publishable key in their existing variables. For local development, use
+   `.env.local` and an ignored `.dev.vars` for Worker-only secrets; `.env.example` lists names but contains no real keys.
+   On Cloudflare, set secrets/vars only on the owner-selected non-production Worker environment. An unset
+   `BILLING_SCHEMA_READY` fails closed; no Cloudflare/Vercel setting is changed by this repository update.
+4. Register the test webhook endpoint at `https://YOUR_TEST_APP_ORIGIN/api/billing/webhook` and subscribe to
+   `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`,
+   `customer.subscription.deleted`, `invoice.payment_succeeded`, and `invoice.payment_failed`. Store only the endpoint's
+   **test-mode** signing secret as `STRIPE_WEBHOOK_SECRET`. The endpoint verifies the exact raw request body and timestamp,
+   rejects live events, fetches the current subscription from Stripe, and sends it to an idempotent database RPC. Repeated
+   event IDs are ignored; older events cannot roll the stored subscription back. Configure webhook delivery before making
+   a test Checkout transaction.
+5. Test the full flow in that non-production deployment with a Stripe test transaction: hosted Checkout, signed webhook
+   delivery, status refresh, playbook create/delete and cross-account denial, cancellation/expiry, and the Stripe Portal.
+   Confirm that local IndexedDB records remain unchanged after Pro access ends. Verify webhook retries and out-of-order
+   events in Stripe's test tooling. These repository tests use mocks; they do **not** prove a real Stripe transaction or
+   provider configuration.
+
+Do not create a live product, set live keys, configure Production secrets, or enable Production billing without separate
+owner approval. Never set `BILLING_SCHEMA_READY=true` as a substitute for applying and verifying the migration. Test
+Checkout transactions are not actual charges and are not proof of production readiness.
+
 ## Testing
 
 ```bash
@@ -206,15 +262,17 @@ npm run typecheck
 npm run lint
 npm test
 npm run build
+WORKERS_CI=1 npm run build
 npm audit
 ```
 
-Account tests mock Supabase's Auth and PostgREST boundaries and inspect the migration's constraints/RLS rules. They verify
-validation, normalization, username conflict handling (including simultaneous requests at the route boundary),
-verification callback handling, unverified/verified sign-in, reset/resend failure behavior, authorization scoping, and
-provider retry messaging. They do **not** contact a live Supabase project or deliver a real email. Live-provider smoke tests
-must be completed after the owner configures Supabase and SMTP. Existing IndexedDB tests continue to cover JSON backup and
-restore behavior.
+Tests mock Stripe/Supabase provider boundaries and inspect billing migration RLS, ownership, event de-duplication, and
+out-of-order guards. They cover test-only configuration, raw-body signature/timestamp verification, invalid and cross-origin
+requests, server-derived checkout identity/price, portal authorization, playbook validation/ownership, RLS denial, and local
+workspace preservation after entitlement expiry. Existing account tests cover auth and snapshot behavior. None of these
+tests contact Stripe or Supabase, complete an actual test transaction, or prove provider configuration; the owner must run
+the documented test-mode transaction and webhook checks before considering the integration ready. The builds are not
+Production deployments.
 
 Browser-only interactions (modal flows, clipboard, PDF/PNG export, IndexedDB quota errors, and responsive account forms)
 should also be tested in a real desktop and mobile browser before launch.
@@ -235,8 +293,21 @@ Node 20+. Configure account variables for Preview first, test there, and only ad
 
 - **Custom domain** — not configured. Add it in Vercel only if already owned/approved, then update `metadataBase`, `robots.ts`
   and `sitemap.ts` from `https://unbilled.app` to the chosen domain.
-- **Email sender** — requires an owner-configured SMTP provider and verified sender identity for general delivery; no sender
-  credentials or payment service are included in the repository.
+- **Email sender** — requires an owner-configured SMTP provider and verified sender identity for general delivery; no
+  SMTP credentials are included in the repository.
+
+## Deploying to Cloudflare Workers (OpenNext)
+
+The Cloudflare adapter uses runtime Worker bindings for server secrets. Keep billing secrets out of `wrangler.jsonc`; use
+an ignored local `.dev.vars` for local Worker development or the owner-selected non-production Worker environment's private
+secret/variable settings. An unset `BILLING_SCHEMA_READY` fails closed. Do not deploy or change Production settings as part
+of this setup.
+
+```bash
+WORKERS_CI=1 npm run build
+```
+
+This verifies the OpenNext/Cloudflare build path only; it does not deploy. Vercel/Next builds remain `npm run build`.
 
 ## Deliberate limitations
 

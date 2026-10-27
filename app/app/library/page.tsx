@@ -9,6 +9,7 @@ import { LIBRARY } from '@/lib/scripts';
 import { useReadySettings } from '@/lib/hooks';
 import { Button } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { ReplyPlaybooks } from '@/components/billing/ReplyPlaybooks';
 
 type Category = 'All' | 'Boundaries' | 'Pricing' | 'Revisions' | 'Relationship' | 'Contracts';
 
@@ -35,6 +36,8 @@ export default function LibraryPage() {
           </Link>
         }
       />
+
+      <ReplyPlaybooks />
 
       <Tabs value={category} onChange={setCategory} tabs={(['All', 'Boundaries', 'Pricing', 'Revisions', 'Relationship', 'Contracts'] as Category[]).map((value) => ({ value, label: value }))} />
 

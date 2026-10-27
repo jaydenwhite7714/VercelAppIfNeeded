@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { ArrowRight, Check, LockKeyhole, Sparkles } from 'lucide-react';
+import { ArrowRight, Check } from 'lucide-react';
 import { Wordmark } from '@/components/brand';
 import { Button, Card } from '@/components/ui';
+import { ProPricingCard } from '@/components/billing/BillingPanel';
 
 const features = [
   'Check client messages against your agreed scope',
@@ -24,7 +25,7 @@ export default function PricingPage() {
           <p className="mono-label">Simple pricing · no surprises</p>
           <h1 className="mt-4 font-display text-5xl tracking-tight sm:text-6xl">Useful work tools.<br /><span className="text-accent">Free to use.</span></h1>
           <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-ink-mute">
-            Unbilled is currently free. Use the scope checker and local ledger without an account; optional account backups depend on the provider’s free-tier limits. No Unbilled subscription or checkout is offered.
+            The core workspace is free. An optional Pro plan adds private cloud-saved reply playbooks; your ledger and existing projects stay local in this browser on every plan.
           </p>
         </section>
 
@@ -40,19 +41,7 @@ export default function PricingPage() {
             <p className="mt-3 text-center text-[11px] text-ink-mute">Your project data stays in this browser. Export a backup in Settings.</p>
           </Card>
 
-          <Card className="flex flex-col border-ink/15 bg-paper-deep/40 p-6 sm:p-8">
-            <div className="flex items-center gap-2 text-accent"><Sparkles className="h-4 w-4"/><p className="mono-label text-accent">Being explored</p></div>
-            <h2 className="mt-3 text-2xl font-semibold">Unbilled Pro</h2>
-            <p className="mt-3 text-sm leading-relaxed text-ink-mute">A paid plan is not available yet. Pro features, pricing, and license activation have not been released.</p>
-            <div className="my-4 rounded-xl border border-line bg-card p-3.5">
-              <p className="mono-label">Ideas only · not available</p>
-              <p className="mt-2 text-xs leading-relaxed text-ink-mute">Optional encrypted sync or team collaboration may be explored if demand can support the ongoing costs. The local, single-browser workspace is intended to remain free. No plan, price, or release date is committed.</p>
-            </div>
-            <div className="my-5 rounded-xl border border-line bg-card p-3.5">
-              <div className="flex items-start gap-2.5"><LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-ink-mute"/><p className="text-xs leading-relaxed text-ink-mute">There is no checkout button and this page will not ask you to pay. We’ll update this page when paid features actually exist.</p></div>
-            </div>
-            <div className="mt-auto pt-3"><Link href="/app"><Button className="w-full">Open the free workspace <ArrowRight className="h-4 w-4" /></Button></Link></div>
-          </Card>
+          <ProPricingCard />
         </section>
 
         <footer className="py-10 text-center text-xs text-ink-mute"><Link className="underline" href="/privacy">Privacy details</Link> · <Link className="underline" href="/">Unbilled home</Link></footer>
